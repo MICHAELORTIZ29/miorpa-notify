@@ -33,7 +33,7 @@ class LoginTest extends TestCase
         $this->post('/login', [
             'email' => 'admin@example.com',
             'password' => 'Secret12345!',
-        ])->assertRedirect('/dashboard');
+        ])->assertRedirect('/business/dashboard');
 
         $this->assertAuthenticatedAs($user);
     }

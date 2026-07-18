@@ -89,4 +89,5 @@ class User extends Authenticatable
     {
         return $this->status === self::STATUS_ACTIVE;
     }
+   
 }

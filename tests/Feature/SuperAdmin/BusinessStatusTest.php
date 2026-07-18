@@ -11,32 +11,50 @@ class BusinessStatusTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_superadmin_can_edit_a_business(): void
-    {
-        $superAdmin = User::factory()->superAdmin()->create();
-        $business = Business::factory()->create();
+   public function test_superadmin_can_edit_a_business(): void
+{
+    $superAdmin = User::factory()->superAdmin()->create();
+    $business = Business::factory()->create();
 
-        $response = $this
-            ->actingAs($superAdmin)
-            ->put(route('superadmin.businesses.update', $business), [
-                'name' => 'Negocio actualizado',
-                'legal_name' => 'Negocio Actualizado S.A.C.',
-                'tax_id' => '20123456789',
-                'contact_phone' => '987654321',
-                'timezone' => 'America/Lima',
-            ]);
+    $administrator = User::factory()->create([
+        'business_id' => $business->id,
+        'name' => 'Administrador original',
+        'email' => 'original@example.com',
+        'role_code' => User::ROLE_ADMINISTRATOR,
+        'status' => User::STATUS_ACTIVE,
+    ]);
 
-        $response->assertRedirect(
-            route('superadmin.businesses.show', $business)
-        );
-
-        $this->assertDatabaseHas('businesses', [
-            'id' => $business->id,
+    $response = $this
+        ->actingAs($superAdmin)
+        ->put(route('superadmin.businesses.update', $business), [
             'name' => 'Negocio actualizado',
+            'legal_name' => 'Negocio Actualizado S.A.C.',
             'tax_id' => '20123456789',
             'contact_phone' => '987654321',
+            'timezone' => 'America/Lima',
+            'admin_name' => 'Administrador actualizado',
+            'admin_email' => 'actualizado@example.com',
+            'admin_password' => 'NuevaClave123!',
+            'admin_password_confirmation' => 'NuevaClave123!',
         ]);
-    }
+
+    $response->assertRedirect(
+        route('superadmin.businesses.show', $business)
+    );
+
+    $this->assertDatabaseHas('businesses', [
+        'id' => $business->id,
+        'name' => 'Negocio actualizado',
+        'tax_id' => '20123456789',
+        'contact_phone' => '987654321',
+    ]);
+
+    $this->assertDatabaseHas('users', [
+        'id' => $administrator->id,
+        'name' => 'Administrador actualizado',
+        'email' => 'actualizado@example.com',
+    ]);
+}
 
     public function test_superadmin_can_suspend_a_business(): void
     {

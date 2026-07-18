@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
@@ -21,20 +21,25 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
         $request->session()->regenerate();
 
-        return redirect()
-            ->intended(route('dashboard'))
-            ->with('success', 'Bienvenido a MIORPA NOTIFY.');
+        $user = $request->user();
+
+        $route = match ($user->role_code) {
+            User::ROLE_SUPERADMIN => 'superadmin.businesses.index',
+            User::ROLE_ADMINISTRATOR => 'business.dashboard',
+            User::ROLE_CASHIER => 'cashier.dashboard',
+            default => 'login',
+        };
+
+        return redirect()->route($route);
     }
 
     public function destroy(Request $request): RedirectResponse
     {
-        Auth::logout();
+        auth()->guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()
-            ->route('login')
-            ->with('success', 'Sesión cerrada correctamente.');
+        return redirect()->route('login');
     }
 }

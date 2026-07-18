@@ -17,7 +17,11 @@
         padding: 8vw;
         color: white;
         background:
-            radial-gradient(circle at top right, rgba(19, 168, 158, .7), transparent 35%),
+            radial-gradient(
+                circle at top right,
+                rgba(19, 168, 158, .7),
+                transparent 35%
+            ),
             linear-gradient(145deg, #0a2948, #123a63);
     }
 
@@ -57,13 +61,87 @@
         color: var(--muted);
     }
 
+    .login-form-group {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 18px;
+    }
+
+    .login-form-group label {
+        font-weight: 700;
+    }
+
+    .login-input {
+        display: block;
+        width: 100%;
+        height: 58px;
+        box-sizing: border-box;
+        padding: 0 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: white;
+        font: inherit;
+        font-size: 17px;
+        outline: none;
+    }
+
+    .login-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(18, 91, 135, .12);
+    }
+
+    .login-password-field {
+        position: relative;
+        width: 100%;
+    }
+
+    .login-password-field .login-input {
+        padding-right: 58px;
+    }
+
+    .login-password-toggle {
+        position: absolute;
+        z-index: 10;
+        top: 50%;
+        right: 9px;
+        width: 42px;
+        height: 42px;
+        padding: 0;
+        transform: translateY(-50%);
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        cursor: pointer;
+        font-size: 20px;
+        line-height: 1;
+    }
+
+    .login-password-toggle:hover {
+        background: #edf3f8;
+    }
+
+    .login-password-toggle:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 1px;
+    }
+
+    .field-error {
+        color: #b42318;
+        font-size: 14px;
+    }
+
     .remember {
         display: flex;
         align-items: center;
         gap: 9px;
-        margin-bottom: 20px;
+        margin: 4px 0 20px;
         color: var(--muted);
         font-size: 14px;
+    }
+
+    .remember input {
+        width: 16px;
+        height: 16px;
     }
 
     .login-button {
@@ -84,6 +162,10 @@
 
         .login-presentation {
             display: none;
+        }
+
+        .login-area {
+            padding: 24px;
         }
     }
 </style>
@@ -130,10 +212,12 @@
             <form method="POST" action="{{ route('login.store') }}">
                 @csrf
 
-                <div class="field">
+                <div class="login-form-group">
                     <label for="email">Correo electrónico</label>
+
                     <input
                         id="email"
+                        class="login-input"
                         name="email"
                         type="email"
                         value="{{ old('email') }}"
@@ -143,22 +227,36 @@
                     >
 
                     @error('email')
-                        <div class="field-error">{{ $message }}</div>
+                        <span class="field-error">{{ $message }}</span>
                     @enderror
                 </div>
 
-                <div class="field">
+                <div class="login-form-group">
                     <label for="password">Contraseña</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autocomplete="current-password"
-                        required
-                    >
+
+                    <div class="login-password-field">
+                        <input
+                            id="password"
+                            class="login-input"
+                            name="password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                        >
+
+                        <button
+                            id="toggle-login-password"
+                            class="login-password-toggle"
+                            type="button"
+                            aria-label="Mostrar contraseña"
+                            title="Mostrar contraseña"
+                        >
+                            <span id="password-eye">👁</span>
+                        </button>
+                    </div>
 
                     @error('password')
-                        <div class="field-error">{{ $message }}</div>
+                        <span class="field-error">{{ $message }}</span>
                     @enderror
                 </div>
 
@@ -172,7 +270,10 @@
                     Mantener mi sesión iniciada
                 </label>
 
-                <button class="button button-primary login-button" type="submit">
+                <button
+                    class="button button-primary login-button"
+                    type="submit"
+                >
                     Ingresar
                 </button>
             </form>
@@ -183,4 +284,39 @@
         </div>
     </section>
 </main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const input = document.getElementById('password');
+        const button = document.getElementById('toggle-login-password');
+        const eye = document.getElementById('password-eye');
+
+        if (!input || !button || !eye) {
+            return;
+        }
+
+        button.addEventListener('click', function () {
+            const visible = input.type === 'text';
+
+            input.type = visible ? 'password' : 'text';
+            eye.textContent = visible ? '👁' : '🙈';
+
+            button.setAttribute(
+                'aria-label',
+                visible
+                    ? 'Mostrar contraseña'
+                    : 'Ocultar contraseña'
+            );
+
+            button.setAttribute(
+                'title',
+                visible
+                    ? 'Mostrar contraseña'
+                    : 'Ocultar contraseña'
+            );
+
+            input.focus();
+        });
+    });
+</script>
 @endsection
