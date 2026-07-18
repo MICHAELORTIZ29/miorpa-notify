@@ -103,17 +103,25 @@
         </div>
 
         <nav class="business-nav">
-            <a href="{{ route('business.dashboard') }}">
-                Inicio
-            </a>
+            @if (auth()->user()->isAdministrator())
+                <a href="{{ route('business.dashboard') }}">
+                    Inicio
+                </a>
 
-            <a href="{{ route('business.users.index') }}"
-                class="{{ request()->routeIs('business.users.*') ? 'active' : '' }}">
-                Cajeros
-            </a>
-            <a href="{{ route('business.devices.index') }}"
-                class="{{ request()->routeIs('business.devices.*') ? 'active' : '' }}">
-                Dispositivos
+                <a href="{{ route('business.users.index') }}"
+                    class="{{ request()->routeIs('business.users.*') ? 'active' : '' }}">
+                    Cajeros
+                </a>
+
+                <a href="{{ route('business.devices.index') }}"
+                    class="{{ request()->routeIs('business.devices.*') ? 'active' : '' }}">
+                    Dispositivos
+                </a>
+            @endif
+
+            <a href="{{ route('business.payments.index') }}"
+                class="{{ request()->routeIs('business.payments.*') ? 'active' : '' }}">
+                Pagos
             </a>
         </nav>
 

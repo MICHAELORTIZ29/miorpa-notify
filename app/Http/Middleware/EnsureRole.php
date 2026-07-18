@@ -16,7 +16,8 @@ class EnsureRole
         $user = $request->user();
 
         abort_unless(
-            $user !== null && in_array($user->role_code, $roles, true),
+            $user !== null
+            && in_array($user->role_code, $roles, true),
             403
         );
 
