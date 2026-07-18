@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'active.user' => EnsureUserIsActive::class,
             'role' => EnsureRole::class,
+            'device.auth' => \App\Http\Middleware\AuthenticateDevice::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
