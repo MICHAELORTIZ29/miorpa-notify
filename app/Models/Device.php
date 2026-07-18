@@ -78,4 +78,8 @@ class Device extends Model
         return $this->status === self::STATUS_ACTIVE
             && $this->revoked_at === null;
     }
+    public function emittedPayments(): HasMany
+{
+    return $this->hasMany(Payment::class, 'emitter_device_id');
+}
 }

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+
 class Business extends Model
 {
     use HasFactory;
@@ -50,5 +51,14 @@ class Business extends Model
             self::STATUS_TRIAL,
             self::STATUS_ACTIVE,
         ], true);
+    }
+    public function devices(): HasMany
+    {
+        return $this->hasMany(Device::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
     }
 }

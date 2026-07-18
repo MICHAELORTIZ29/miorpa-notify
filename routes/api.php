@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\DeviceSessionController;
 use App\Http\Controllers\Api\V1\PairingController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\V1\PaymentController;
 
 Route::prefix('v1')->group(function () {
     Route::post(
@@ -19,6 +20,10 @@ Route::prefix('v1')->group(function () {
                 '/status',
                 [DeviceSessionController::class, 'status']
             )->name('api.v1.device.status');
+            Route::post(
+                '/payments',
+                [PaymentController::class, 'store']
+            )->name('api.v1.device.payments.store');
 
             Route::post(
                 '/heartbeat',
