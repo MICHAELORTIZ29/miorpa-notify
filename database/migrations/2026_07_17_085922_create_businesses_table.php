@@ -4,17 +4,21 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     public function up(): void
     {
         Schema::create('businesses', function (Blueprint $table) {
             $table->id();
 
-            $table->char('public_id', 26)
-                ->charset('ascii')
-                ->collation('ascii_bin')
-                ->unique();
+            $publicId = $table->char('public_id', 26);
+
+            if (Schema::getConnection()->getDriverName() === 'mysql') {
+                $publicId
+                    ->charset('ascii')
+                    ->collation('ascii_bin');
+            }
+
+            $publicId->unique();
 
             $table->string('name', 150);
             $table->string('legal_name', 200)->nullable();
