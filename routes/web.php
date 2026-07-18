@@ -5,6 +5,7 @@ use App\Http\Controllers\SuperAdmin\BusinessController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Business\UserController as BusinessUserController;
+use App\Http\Controllers\Business\DeviceController;
 
 
 Route::redirect('/', '/login');
@@ -37,6 +38,34 @@ Route::middleware(['auth', 'active.user'])->group(function (): void {
 
             Route::resource('users', BusinessUserController::class)
                 ->only(['index', 'create', 'store', 'edit', 'update']);
+
+            Route::get('/devices', [DeviceController::class, 'index'])
+                ->name('devices.index');
+
+            Route::post(
+                '/devices/pairing-codes',
+                [DeviceController::class, 'storePairingCode']
+            )->name('devices.pairing-codes.store');
+
+            Route::patch(
+                '/devices/pairing-codes/{pairingCode}/revoke',
+                [DeviceController::class, 'revokePairingCode']
+            )->name('devices.pairing-codes.revoke');
+
+            Route::patch(
+                '/devices/{device}/deactivate',
+                [DeviceController::class, 'deactivate']
+            )->name('devices.deactivate');
+
+            Route::patch(
+                '/devices/{device}/activate',
+                [DeviceController::class, 'activate']
+            )->name('devices.activate');
+
+            Route::patch(
+                '/devices/{device}/revoke',
+                [DeviceController::class, 'revoke']
+            )->name('devices.revoke');
         });
 
     Route::get('/business/dashboard', function () {
@@ -63,8 +92,8 @@ Route::middleware(['auth', 'active.user'])->group(function (): void {
                 ->only(['index', 'create', 'store', 'show', 'edit', 'update']);
         });
     Route::view('/cashier/dashboard', 'dashboard')
-    ->middleware(['auth', 'active.user', 'role:cashier'])
-    ->name('cashier.dashboard');
+        ->middleware(['auth', 'active.user', 'role:cashier'])
+        ->name('cashier.dashboard');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
         ->middleware('auth')
