@@ -5,6 +5,7 @@ use App\Http\Controllers\SuperAdmin\BusinessController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
+
 Route::redirect('/', '/login');
 
 Route::middleware('guest')->group(function (): void {
@@ -33,13 +34,23 @@ Route::middleware(['auth', 'active.user'])->group(function (): void {
     })->name('business.dashboard');
 
     Route::prefix('superadmin')
-        ->name('superadmin.')
-        ->middleware('role:superadmin')
-        ->group(function (): void {
-            Route::resource('businesses', BusinessController::class)
-                ->only(['index', 'create', 'store', 'show']);
-        });
+    ->name('superadmin.')
+    ->middleware(['auth', 'active.user', 'role:superadmin'])
+    ->group(function () {
+        Route::patch(
+            'businesses/{business}/suspend',
+            [BusinessController::class, 'suspend']
+        )->name('businesses.suspend');
 
+        Route::patch(
+            'businesses/{business}/activate',
+            [BusinessController::class, 'activate']
+        )->name('businesses.activate');
+
+        Route::resource('businesses', BusinessController::class)
+            ->only(['index', 'create', 'store', 'show', 'edit', 'update']);
+    });
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
-        ->name('logout');
+    ->middleware('auth')
+    ->name('logout');
 });
