@@ -9,6 +9,8 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
+use App\Models\Subscription;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
@@ -46,25 +48,44 @@ class UserController extends Controller
         return view('business.users.create');
     }
 
-    public function store(StoreUserRequest $request): RedirectResponse
-    {
-        $administrator = $request->user();
-        $validated = $request->validated();
+   public function store(
+    StoreUserRequest $request
+): RedirectResponse {
+    $administrator = $request->user();
+    $validated = $request->validated();
 
-        User::query()->create([
-            'business_id' => $administrator->business_id,
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'role_code' => User::ROLE_CASHIER,
-            'status' => User::STATUS_ACTIVE,
-        ]);
+    $this->ensureCashierCapacity(
+        $administrator->business_id
+    );
 
-        return redirect()
-            ->route('business.users.index')
-            ->with('success', 'Cajero creado correctamente.');
-    }
+    User::query()->create([
+        'business_id' =>
+            $administrator->business_id,
 
+        'name' =>
+            $validated['name'],
+
+        'email' =>
+            $validated['email'],
+
+        'password' => Hash::make(
+            $validated['password']
+        ),
+
+        'role_code' =>
+            User::ROLE_CASHIER,
+
+        'status' =>
+            User::STATUS_ACTIVE,
+    ]);
+
+    return redirect()
+        ->route('business.users.index')
+        ->with(
+            'success',
+            'Cajero creado correctamente.'
+        );
+}
     public function edit(User $user): View
     {
         $this->ensureCashierBelongsToBusiness($user);
@@ -108,17 +129,37 @@ class UserController extends Controller
         return back()->with('success', 'Cajero desactivado correctamente.');
     }
 
-    public function activate(User $user): RedirectResponse
-    {
-        $this->ensureCashierBelongsToBusiness($user);
+    public function activate(
+    User $user
+): RedirectResponse {
+    $this->ensureCashierBelongsToBusiness(
+        $user
+    );
 
-        $user->update([
-            'status' => User::STATUS_ACTIVE,
-            'disabled_at' => null,
-        ]);
-
-        return back()->with('success', 'Cajero activado correctamente.');
+    if ($user->status === User::STATUS_ACTIVE) {
+        return back()->with(
+            'info',
+            'El cajero ya se encuentra activo.'
+        );
     }
+
+    $this->ensureCashierCapacity(
+        $user->business_id
+    );
+
+    $user->update([
+        'status' =>
+            User::STATUS_ACTIVE,
+
+        'disabled_at' =>
+            null,
+    ]);
+
+    return back()->with(
+        'success',
+        'Cajero activado correctamente.'
+    );
+}
 
     private function ensureCashierBelongsToBusiness(User $user): void
     {
@@ -130,4 +171,67 @@ class UserController extends Controller
             404
         );
     }
+    private function ensureCashierCapacity(
+    int $businessId
+): void {
+    $administrator = auth()->user();
+
+    abort_unless(
+        $administrator !== null
+        && $administrator->business_id === $businessId,
+        404
+    );
+
+    $subscription = $administrator
+        ->business
+        ->currentSubscription()
+        ->with([
+            'plan.limits',
+            'limitOverrides',
+        ])
+        ->first();
+
+    if ($subscription === null) {
+        throw ValidationException::withMessages([
+            'plan_limit' =>
+                'El negocio no tiene una suscripción configurada.',
+        ]);
+    }
+
+    if (
+        $subscription->status ===
+        Subscription::STATUS_SUSPENDED
+    ) {
+        throw ValidationException::withMessages([
+            'plan_limit' =>
+                'La suscripción está suspendida.',
+        ]);
+    }
+
+    $cashierLimit = $subscription->limit(
+        Subscription::LIMIT_CASHIERS
+    ) ?? 0;
+
+    $activeCashiers = User::query()
+        ->where(
+            'business_id',
+            $businessId
+        )
+        ->where(
+            'role_code',
+            User::ROLE_CASHIER
+        )
+        ->where(
+            'status',
+            User::STATUS_ACTIVE
+        )
+        ->count();
+
+    if ($activeCashiers >= $cashierLimit) {
+        throw ValidationException::withMessages([
+            'plan_limit' =>
+                "El plan permite un máximo de {$cashierLimit} cajeros activos.",
+        ]);
+    }
+}
 }

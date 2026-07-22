@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use App\Http\Middleware\EnsureReceiverDeviceIsLinked;
 
 return Application::configure(basePath: dirname(__DIR__))
 
@@ -14,13 +15,14 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias([
-            'active.user' => EnsureUserIsActive::class,
-            'role' => EnsureRole::class,
-            'device.auth' => \App\Http\Middleware\AuthenticateDevice::class,
-        ]);
-    })
+   ->withMiddleware(function (Middleware $middleware): void {
+    $middleware->alias([
+        'active.user' => EnsureUserIsActive::class,
+        'role' => EnsureRole::class,
+        'device.auth' => \App\Http\Middleware\AuthenticateDevice::class,
+        'receiver.linked' => EnsureReceiverDeviceIsLinked::class,
+    ]);
+})
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })

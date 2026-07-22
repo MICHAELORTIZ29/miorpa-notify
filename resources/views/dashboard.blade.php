@@ -1,154 +1,370 @@
-@extends('layouts.app')
+@extends('business.layout')
 
-@section('title', 'Dashboard | MIORPA NOTIFY')
+@section('title', 'Inicio | MIORPA NOTIFY')
 
 @push('styles')
 <style>
-    .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 20px;
-        padding: 18px 5vw;
-        color: white;
-        background: var(--primary-dark);
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 18px;
+        margin-bottom: 24px;
     }
 
-    .user-area {
-        display: flex;
-        align-items: center;
-        gap: 14px;
+    .dashboard-card {
+        padding: 22px;
     }
 
-    .user-data {
-        text-align: right;
-    }
-
-    .user-data strong,
-    .user-data small {
+    .dashboard-card small {
         display: block;
+        color: var(--muted);
     }
 
-    .user-data small {
-        margin-top: 3px;
-        color: #bdd0e2;
+    .dashboard-card strong {
+        display: block;
+        margin-top: 9px;
+        color: var(--primary-dark);
+        font-size: 31px;
     }
 
-    .dashboard {
-        width: min(1180px, 92%);
-        margin: 38px auto;
+    .dashboard-sections {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 20px;
     }
 
-    .dashboard h1 {
+    .dashboard-panel {
+        padding: 23px;
+    }
+
+    .dashboard-panel h2 {
+        margin: 0 0 18px;
+    }
+
+    .payment-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .payment-row:last-child {
+        border-bottom: 0;
+    }
+
+    .payment-client small {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+    }
+
+    .payment-amount {
+        font-size: 18px;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .usage-list {
+        display: grid;
+        gap: 17px;
+    }
+
+    .usage-item {
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .usage-item:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+    }
+
+    .usage-heading {
+        display: flex;
+        justify-content: space-between;
+        gap: 15px;
         margin-bottom: 8px;
     }
 
-    .dashboard-subtitle {
-        margin-top: 0;
+    .usage-heading span {
         color: var(--muted);
     }
 
-    .cards {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 20px;
-        margin-top: 32px;
+    .usage-bar {
+        height: 9px;
+        overflow: hidden;
+        background: #e8eef4;
+        border-radius: 999px;
     }
 
-    .card {
-        padding: 24px;
-        background: white;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        box-shadow: 0 8px 24px rgba(18, 58, 99, .06);
+    .usage-bar div {
+        height: 100%;
+        background: #079b98;
+        border-radius: inherit;
     }
 
-    .card small {
-        color: var(--muted);
+    .quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 22px;
     }
 
-    .card strong {
-        display: block;
-        margin-top: 12px;
-        font-size: 32px;
-    }
-
-    .empty {
-        margin-top: 24px;
-        padding: 36px;
+    .empty-dashboard {
+        padding: 30px;
         color: var(--muted);
         text-align: center;
-        background: white;
-        border: 1px dashed var(--border);
-        border-radius: 16px;
     }
 
-    @media (max-width: 760px) {
-        .cards {
+    @media (max-width: 1050px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .dashboard-sections {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 620px) {
+        .dashboard-grid {
             grid-template-columns: 1fr;
         }
 
-        .user-data {
-            display: none;
+        .payment-row {
+            grid-template-columns: 1fr auto;
+        }
+
+        .payment-row .payment-action {
+            grid-column: 1 / -1;
         }
     }
 </style>
 @endpush
 
-@section('content')
-<header class="topbar">
-    <div class="brand">
-        <span class="brand-mark">MN</span>
-        <span>MIORPA NOTIFY</span>
+@section('business-content')
+<div class="page-heading">
+    <div>
+        <h1>Resumen</h1>
+
+        <p>
+            Estado actual de {{ $business->name }}.
+        </p>
     </div>
 
-    <div class="user-area">
-        <div class="user-data">
-            <strong>{{ $user->name }}</strong>
-            <small>{{ $user->role_code }}</small>
-        </div>
+    <div class="quick-actions">
+        <a
+            class="button button-secondary button-link"
+            href="{{ route('business.users.create') }}"
+        >
+            Crear cajero
+        </a>
 
-        <form method="POST" action="{{ route('logout') }}">
-            @csrf
-            <button class="button button-secondary" type="submit">
-                Cerrar sesión
-            </button>
-        </form>
+        <a
+            class="button button-secondary button-link"
+            href="{{ route('business.devices.index') }}"
+        >
+            Vincular dispositivo
+        </a>
+
+        <a
+            class="button button-link"
+            href="{{ route('business.payments.index') }}"
+        >
+            Ver pagos
+        </a>
     </div>
-</header>
+</div>
 
-<main class="dashboard">
-    @if (session('success'))
-        <div class="alert alert-success">
-            {{ session('success') }}
+<section class="dashboard-grid">
+    <article class="panel dashboard-card">
+        <small>Pagos recibidos hoy</small>
+
+        <strong>{{ $todayPaymentCount }}</strong>
+    </article>
+
+    <article class="panel dashboard-card">
+        <small>Total recibido hoy</small>
+
+        <strong>
+            S/ {{ number_format($todayPaymentTotal, 2) }}
+        </strong>
+    </article>
+
+    <article class="panel dashboard-card">
+        <small>Dispositivos conectados</small>
+
+        <strong>{{ $connectedDevices }}</strong>
+    </article>
+
+    <article class="panel dashboard-card">
+        <small>Cajeros activos</small>
+
+        <strong>{{ $activeCashiers }}</strong>
+    </article>
+</section>
+
+<section class="dashboard-sections">
+    <article class="panel dashboard-panel">
+        <h2>Últimos pagos</h2>
+
+        @forelse ($latestPayments as $payment)
+            <div class="payment-row">
+                <div class="payment-client">
+                    <strong>
+                        {{ $payment->payer_name
+                            ?: 'Cliente no identificado' }}
+                    </strong>
+
+                    <small>
+                        {{ $payment->provider?->name
+                            ?? 'Medio no identificado' }}
+
+                        ·
+
+                        {{ $payment->occurred_at
+                            ->timezone($business->timezone)
+                            ->format('d/m/Y H:i:s') }}
+                    </small>
+                </div>
+
+                <div class="payment-amount">
+                    S/ {{ number_format($payment->amount, 2) }}
+                </div>
+
+                <a
+                    class="button button-secondary button-link payment-action"
+                    href="{{ route(
+                        'business.payments.show',
+                        $payment
+                    ) }}"
+                >
+                    Ver
+                </a>
+            </div>
+        @empty
+            <div class="empty-dashboard">
+                Todavía no se registraron pagos.
+            </div>
+        @endforelse
+    </article>
+
+    <article class="panel dashboard-panel">
+        <h2>Uso del plan</h2>
+
+        @php
+            $emitterMaximum = max(
+                1,
+                (int) ($emitterLimit ?? 0)
+            );
+
+            $receiverMaximum = max(
+                1,
+                (int) ($receiverLimit ?? 0)
+            );
+
+            $cashierMaximum = max(
+                1,
+                (int) ($cashierLimit ?? 0)
+            );
+        @endphp
+
+        <div class="usage-list">
+            <div class="usage-item">
+                <div class="usage-heading">
+                    <span>Emisores</span>
+
+                    <strong>
+                        {{ $activeEmitters }} /
+                        {{ $emitterLimit ?? 'Sin límite' }}
+                    </strong>
+                </div>
+
+                <div class="usage-bar">
+                    <div
+                        style="width: {{ min(
+                            100,
+                            ($activeEmitters / $emitterMaximum) * 100
+                        ) }}%"
+                    ></div>
+                </div>
+            </div>
+
+            <div class="usage-item">
+                <div class="usage-heading">
+                    <span>Receptores</span>
+
+                    <strong>
+                        {{ $activeReceivers }} /
+                        {{ $receiverLimit ?? 'Sin límite' }}
+                    </strong>
+                </div>
+
+                <div class="usage-bar">
+                    <div
+                        style="width: {{ min(
+                            100,
+                            ($activeReceivers / $receiverMaximum) * 100
+                        ) }}%"
+                    ></div>
+                </div>
+            </div>
+
+            <div class="usage-item">
+                <div class="usage-heading">
+                    <span>Cajeros</span>
+
+                    <strong>
+                        {{ $activeCashiers }} /
+                        {{ $cashierLimit ?? 'Sin límite' }}
+                    </strong>
+                </div>
+
+                <div class="usage-bar">
+                    <div
+                        style="width: {{ min(
+                            100,
+                            ($activeCashiers / $cashierMaximum) * 100
+                        ) }}%"
+                    ></div>
+                </div>
+            </div>
         </div>
-    @endif
 
-    <h1>Resumen</h1>
+        @if ($subscription)
+            <div
+                style="
+                    margin-top: 22px;
+                    color: var(--muted);
+                    line-height: 1.6;
+                "
+            >
+                <div>
+                    Plan:
+                    <strong>{{ $subscription->plan->name }}</strong>
+                </div>
 
-    <p class="dashboard-subtitle">
-        {{ $user->business?->name ?? 'Administración general de la plataforma' }}
-    </p>
+                <div>
+                    Estado:
+                    <strong>{{ ucfirst($subscription->status) }}</strong>
+                </div>
 
-    <section class="cards">
-        <article class="card">
-            <small>Pagos recibidos hoy</small>
-            <strong>0</strong>
-        </article>
-
-        <article class="card">
-            <small>Total recibido hoy</small>
-            <strong>S/ 0.00</strong>
-        </article>
-
-        <article class="card">
-            <small>Dispositivos conectados</small>
-            <strong>0</strong>
-        </article>
-    </section>
-
-    <section class="empty">
-        El sistema está listo. Los módulos operativos se agregarán en los siguientes pasos.
-    </section>
-</main>
+                <div>
+                    Próximo vencimiento:
+                    <strong>
+                        {{ $subscription->current_period_ends_at
+                            ->timezone($business->timezone)
+                            ->format('d/m/Y') }}
+                    </strong>
+                </div>
+            </div>
+        @else
+            <div class="alert alert-warning" style="margin-top: 20px;">
+                El negocio no tiene una suscripción asignada.
+            </div>
+        @endif
+    </article>
+</section>
 @endsection

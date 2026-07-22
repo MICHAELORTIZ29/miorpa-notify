@@ -172,6 +172,10 @@
                 </div>
             </div>
         </section>
+        @include(
+    'superadmin.businesses.subscription-fields',
+    ['business' => null]
+)
 
         <div class="form-actions">
             <a class="button button-secondary button-link" href="{{ route('superadmin.businesses.index') }}">

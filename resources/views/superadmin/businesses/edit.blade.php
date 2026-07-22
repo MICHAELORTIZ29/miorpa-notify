@@ -204,6 +204,10 @@
 
 
             </div>
+            @include(
+    'superadmin.businesses.subscription-fields',
+    ['business' => $business]
+)
 
             <div class="form-actions">
                 <button class="button" type="submit">

@@ -15,6 +15,13 @@
 <section class="panel user-form-panel">
     <form method="POST" action="{{ route('business.users.store') }}">
         @csrf
+        @if ($errors->any())
+    <div class="alert alert-danger">
+        @foreach ($errors->all() as $error)
+            <div>{{ $error }}</div>
+        @endforeach
+    </div>
+@endif
 
         @include('business.users.form')
 

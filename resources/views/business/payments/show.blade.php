@@ -58,8 +58,20 @@
 
 @section('business-content')
 @php
-    $myAcknowledgement = $payment->acknowledgements
-        ->firstWhere('user_id', auth()->id());
+    $myAcknowledgement = $payment
+        ->acknowledgements
+        ->firstWhere(
+            'user_id',
+            auth()->id()
+        );
+
+    $confirmation = $payment
+        ->acknowledgements
+        ->first(
+            fn ($acknowledgement) =>
+                $acknowledgement
+                    ->confirmed_at !== null
+        );
 @endphp
 
 <div class="page-heading">
@@ -119,34 +131,61 @@
             </div>
         </div>
 
-        @if (! $myAcknowledgement?->confirmed_at)
-            <form
-                class="confirmation-form"
-                method="POST"
-                action="{{ route(
-                    'business.payments.confirm',
-                    $payment
-                ) }}"
-            >
-                @csrf
-                @method('PATCH')
+        @if (! $confirmation)
+    <form
+        class="confirmation-form"
+        method="POST"
+        action="{{ route(
+            'business.payments.confirm',
+            $payment
+        ) }}"
+    >
+        @csrf
+        @method('PATCH')
 
-                <button class="button" type="submit">
-                    Confirmar que revisé el pago
-                </button>
-            </form>
-        @else
-            <div class="alert alert-success confirmation-form">
-                Confirmaste este pago el
-                {{ $myAcknowledgement->confirmed_at
-                    ->timezone('America/Lima')
-                    ->format('d/m/Y H:i:s') }}.
-            </div>
-        @endif
+        <button
+            class="button"
+            type="submit"
+        >
+            Marcar como verificado
+        </button>
+    </form>
+@elseif (
+    $confirmation->user_id ===
+    auth()->id()
+)
+    <div
+        class="alert alert-success confirmation-form"
+    >
+        Confirmaste este pago el
+
+        {{ $confirmation
+            ->confirmed_at
+            ->timezone('America/Lima')
+            ->format('d/m/Y H:i:s') }}.
+    </div>
+@else
+    <div
+        class="alert alert-warning confirmation-form"
+    >
+        Este pago ya fue verificado por
+
+        <strong>
+            {{ $confirmation->user->name }}
+        </strong>
+
+        el
+
+        {{ $confirmation
+            ->confirmed_at
+            ->timezone('America/Lima')
+            ->format('d/m/Y H:i:s') }}.
+    </div>
+@endif
     </article>
 
     <article class="panel detail-card">
-        <h2>Revisado por</h2>
+        <h2>Historial de verificación</h2>
 
         @forelse ($payment->acknowledgements as $acknowledgement)
             <div class="acknowledgement">
@@ -160,6 +199,31 @@
                             ->format('d/m/Y H:i:s')
                         : 'No' }}
                 </div>
+                <div>
+    Dispositivo:
+    <strong>
+        {{ $acknowledgement->receiverDevice?->name
+            ?? 'No identificado' }}
+    </strong>
+</div>
+
+<div>
+    Tipo de usuario:
+    <strong>
+        @switch($acknowledgement->user->role_code)
+            @case(\App\Models\User::ROLE_ADMINISTRATOR)
+                Administrador
+                @break
+
+            @case(\App\Models\User::ROLE_CASHIER)
+                Cajero
+                @break
+
+            @default
+                Usuario
+        @endswitch
+    </strong>
+</div>
 
                 <div>
                     Confirmado:

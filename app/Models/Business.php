@@ -6,7 +6,7 @@ use App\Models\Concerns\HasPublicId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Business extends Model
 {
@@ -18,6 +18,8 @@ class Business extends Model
     public const STATUS_OVERDUE = 'overdue';
     public const STATUS_SUSPENDED = 'suspended';
     public const STATUS_CLOSED = 'closed';
+    public const SUSPENSION_MANUAL = 'manual';
+public const SUSPENSION_NONPAYMENT = 'nonpayment';
 
     protected $fillable = [
         'name',
@@ -30,6 +32,7 @@ class Business extends Model
         'contact_phone',
         'suspended_at',
         'closed_at',
+        'suspension_reason',
     ];
 
     protected function casts(): array
@@ -45,13 +48,6 @@ class Business extends Model
         return $this->hasMany(User::class);
     }
 
-    public function isActive(): bool
-    {
-        return in_array($this->status, [
-            self::STATUS_TRIAL,
-            self::STATUS_ACTIVE,
-        ], true);
-    }
     public function devices(): HasMany
     {
         return $this->hasMany(Device::class);
@@ -61,4 +57,40 @@ class Business extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    public function currentSubscription(): HasOne
+    {
+        return $this
+            ->hasOne(Subscription::class)
+            ->latestOfMany();
+    }
+
+    public function isActive(): bool
+    {
+        return in_array(
+            $this->status,
+            [
+                self::STATUS_TRIAL,
+                self::STATUS_ACTIVE,
+                self::STATUS_OVERDUE,
+            ],
+            true
+        );
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->status === self::STATUS_SUSPENDED;
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->status === self::STATUS_CLOSED;
+    }
+    
 }

@@ -5,20 +5,37 @@ use App\Http\Controllers\Business\DeviceController;
 use App\Http\Controllers\Business\PaymentController as BusinessPaymentController;
 use App\Http\Controllers\Business\UserController as BusinessUserController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
+use App\Http\Controllers\Receiver\ReceiverLinkController;
+use App\Http\Controllers\Business\DashboardController;
 use App\Models\User;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+/*
+|--------------------------------------------------------------------------
+| Entrada principal
+|--------------------------------------------------------------------------
+*/
+
 Route::get('/', function () {
-    return auth()->check()
-        ? redirect()->route(match (auth()->user()->role_code) {
+    if (! auth()->check()) {
+        return redirect()->route('login');
+    }
+
+    return redirect()->route(
+        match (auth()->user()->role_code) {
             User::ROLE_SUPERADMIN => 'superadmin.businesses.index',
             User::ROLE_ADMINISTRATOR => 'business.dashboard',
             User::ROLE_CASHIER => 'cashier.dashboard',
             default => 'login',
-        })
-        : redirect()->route('login');
+        }
+    );
 });
+
+/*
+|--------------------------------------------------------------------------
+| Autenticación
+|--------------------------------------------------------------------------
+*/
 
 Route::middleware('guest')->group(function () {
     Route::get(
@@ -34,13 +51,63 @@ Route::middleware('guest')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Pantalla de suscripción suspendida
+|--------------------------------------------------------------------------
+|
+| Esta ruta no usa active.user porque debe poder abrirse precisamente
+| cuando el negocio está suspendido.
+|
+*/
+
+Route::middleware('auth')->group(function () {
+    Route::get(
+        '/business/subscription-suspended',
+        function () {
+            return view('business.subscription-suspended');
+        }
+    )->name('business.subscription-suspended');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Vinculación del receptor web
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('receiver')
+    ->name('receiver.')
+    ->middleware([
+        'auth',
+        'active.user',
+        'role:administrator,cashier',
+    ])
+    ->group(function () {
+        Route::get(
+            '/link',
+            [ReceiverLinkController::class, 'create']
+        )->name('link.create');
+
+        Route::post(
+            '/link',
+            [ReceiverLinkController::class, 'store']
+        )
+            ->middleware('throttle:10,1')
+            ->name('link.store');
+    });
+
+/*
+|--------------------------------------------------------------------------
 | Superadministrador
 |--------------------------------------------------------------------------
 */
 
 Route::prefix('superadmin')
     ->name('superadmin.')
-    ->middleware(['auth', 'active.user', 'role:superadmin'])
+    ->middleware([
+        'auth',
+        'active.user',
+        'role:superadmin',
+    ])
     ->group(function () {
         Route::patch(
             'businesses/{business}/suspend',
@@ -52,15 +119,17 @@ Route::prefix('superadmin')
             [BusinessController::class, 'activate']
         )->name('businesses.activate');
 
-        Route::resource('businesses', BusinessController::class)
-            ->only([
-                'index',
-                'create',
-                'store',
-                'show',
-                'edit',
-                'update',
-            ]);
+        Route::resource(
+            'businesses',
+            BusinessController::class
+        )->only([
+            'index',
+            'create',
+            'store',
+            'show',
+            'edit',
+            'update',
+        ]);
     });
 
 /*
@@ -77,8 +146,16 @@ Route::prefix('business')
         'role:administrator',
     ])
     ->group(function () {
-        Route::view('/dashboard', 'dashboard')
-            ->name('dashboard');
+        Route::get(
+            '/dashboard',
+            DashboardController::class
+        )->name('dashboard');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Usuarios y cajeros
+        |--------------------------------------------------------------------------
+        */
 
         Route::patch(
             '/users/{user}/deactivate',
@@ -90,14 +167,22 @@ Route::prefix('business')
             [BusinessUserController::class, 'activate']
         )->name('users.activate');
 
-        Route::resource('users', BusinessUserController::class)
-            ->only([
-                'index',
-                'create',
-                'store',
-                'edit',
-                'update',
-            ]);
+        Route::resource(
+            'users',
+            BusinessUserController::class
+        )->only([
+            'index',
+            'create',
+            'store',
+            'edit',
+            'update',
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Dispositivos
+        |--------------------------------------------------------------------------
+        */
 
         Route::get(
             '/devices',
@@ -142,12 +227,29 @@ Route::prefix('business')
         'auth',
         'active.user',
         'role:administrator,cashier',
+        'receiver.linked',
     ])
     ->group(function () {
         Route::get(
             '/payments',
             [BusinessPaymentController::class, 'index']
         )->name('payments.index');
+
+        Route::get(
+            '/payments/export',
+            [
+                BusinessPaymentController::class,
+                'export',
+            ]
+        )->name('payments.export');
+
+        /*
+         * Esta ruta debe estar antes de /payments/{payment}.
+         */
+        Route::get(
+            '/payments/live-status',
+            [BusinessPaymentController::class, 'liveStatus']
+        )->name('payments.live-status');
 
         Route::get(
             '/payments/{payment}',
@@ -164,10 +266,16 @@ Route::prefix('business')
 |--------------------------------------------------------------------------
 | Cajero
 |--------------------------------------------------------------------------
-*/Route::get('/cashier/dashboard', function () {
+*/
+
+Route::get('/cashier/dashboard', function () {
     return redirect()->route('business.payments.index');
 })
-    ->middleware(['auth', 'active.user', 'role:cashier'])
+    ->middleware([
+        'auth',
+        'active.user',
+        'role:cashier',
+    ])
     ->name('cashier.dashboard');
 
 /*

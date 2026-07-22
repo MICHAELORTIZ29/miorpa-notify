@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Business;
 use App\Models\Device;
+use App\Services\SubscriptionStatusService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,53 +12,140 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthenticateDevice
 {
+    public function __construct(
+        private readonly SubscriptionStatusService $service
+    ) {
+    }
+
     public function handle(
         Request $request,
         Closure $next
     ): Response|JsonResponse {
-        $plainToken = $request->bearerToken();
+        $plainToken =
+            $request->bearerToken();
 
         if (! $plainToken) {
             return response()->json([
-                'message' => 'Token de dispositivo requerido.',
-                'code' => 'DEVICE_TOKEN_REQUIRED',
+                'message' =>
+                    'Token de dispositivo requerido.',
+
+                'code' =>
+                    'DEVICE_TOKEN_REQUIRED',
             ], 401);
         }
 
         $device = Device::query()
             ->with('business')
-            ->where('token_hash', hash('sha256', $plainToken))
+            ->where(
+                'token_hash',
+                hash(
+                    'sha256',
+                    $plainToken
+                )
+            )
             ->first();
 
         if (! $device) {
             return response()->json([
-                'message' => 'Token de dispositivo no válido.',
-                'code' => 'DEVICE_TOKEN_INVALID',
+                'message' =>
+                    'Token de dispositivo no válido.',
+
+                'code' =>
+                    'DEVICE_TOKEN_INVALID',
             ], 401);
         }
 
-        if ($device->status !== Device::STATUS_ACTIVE) {
-            return response()->json([
-                'message' => 'El dispositivo no está autorizado.',
-                'code' => $device->status === Device::STATUS_REVOKED
-                    ? 'DEVICE_REVOKED'
-                    : 'DEVICE_DISABLED',
-            ], 403);
-        }
-
         if (
-            ! in_array($device->business->status, [
-                Business::STATUS_ACTIVE,
-                Business::STATUS_TRIAL,
-            ], true)
+            $device->status !==
+            Device::STATUS_ACTIVE
         ) {
             return response()->json([
-                'message' => 'El negocio no se encuentra operativo.',
-                'code' => 'BUSINESS_NOT_OPERATIONAL',
+                'message' =>
+                    'El dispositivo no está autorizado.',
+
+                'code' =>
+                    $device->status ===
+                    Device::STATUS_REVOKED
+                        ? 'DEVICE_REVOKED'
+                        : 'DEVICE_DISABLED',
             ], 403);
         }
 
-        $request->attributes->set('device', $device);
+        $business = $device->business;
+
+        $subscription = $business
+            ->currentSubscription()
+            ->with('business')
+            ->first();
+
+        if ($subscription !== null) {
+            $this->service->synchronize(
+                $subscription
+            );
+
+            $business->refresh();
+        }
+
+        $isStatusRequest =
+            $request->routeIs(
+                'api.v1.device.status',
+                'api.v1.device.heartbeat'
+            );
+
+        $businessIsOperational =
+            $subscription !== null
+            &&
+            in_array(
+                $business->status,
+                [
+                    Business::STATUS_ACTIVE,
+                    Business::STATUS_TRIAL,
+                    Business::STATUS_OVERDUE,
+                ],
+                true
+            );
+
+        if (! $businessIsOperational) {
+            /*
+             * Permitimos heartbeat y consulta de estado
+             * para que la APK pueda mostrar por qué se
+             * suspendió el servicio.
+             */
+            if ($isStatusRequest) {
+                $request->attributes->set(
+                    'device',
+                    $device
+                );
+
+                return $next($request);
+            }
+
+            $warning =
+                $subscription?->warning();
+
+            return response()->json([
+                'message' =>
+                    $warning['message']
+                    ?? (
+                        $subscription === null
+                            ? 'El negocio no tiene una suscripción activa.'
+                            : 'El negocio no se encuentra operativo.'
+                    ),
+
+                'code' =>
+                    $warning['code']
+                    ?? (
+                        $subscription === null
+                            ? 'SUBSCRIPTION_NOT_FOUND'
+                            : 'BUSINESS_NOT_OPERATIONAL'
+                    ),
+            ], 403);
+        }
+
+        $request->attributes->set(
+            'device',
+            $device
+        );
 
         return $next($request);
     }
