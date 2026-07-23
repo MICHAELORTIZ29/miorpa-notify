@@ -2,13 +2,13 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/miorpaco/miorpa-repo/
+    - export PUBLICPATH=/home/miorpaco/notify.miorpa.com/
     - /bin/mkdir -p $DEPLOYPATH
+    - /bin/mkdir -p $PUBLICPATH
     - /bin/cp -R app $DEPLOYPATH
     - /bin/cp -R bootstrap $DEPLOYPATH
     - /bin/cp -R config $DEPLOYPATH
     - /bin/cp -R database $DEPLOYPATH
-    - /bin/mkdir -p $DEPLOYPATH/public
-    - /bin/cp -R public/. $DEPLOYPATH/public/
     - /bin/cp -R resources $DEPLOYPATH
     - /bin/cp -R routes $DEPLOYPATH
     - /bin/cp -R storage $DEPLOYPATH
@@ -16,3 +16,4 @@ deployment:
     - /bin/cp artisan $DEPLOYPATH
     - /bin/cp composer.json $DEPLOYPATH
     - /bin/cp composer.lock $DEPLOYPATH
+    - /bin/cp -R public/. $PUBLICPATH
