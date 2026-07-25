@@ -251,27 +251,139 @@
             grid-template-columns: 1fr 1fr;
         }
     }
-
-    @media (max-width: 680px) {
-        .payment-page-heading {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-
-        .live-controls {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-
-        .payment-summary,
-        .filters {
-            grid-template-columns: 1fr;
-        }
-
-        .payments-table {
-            min-width: 980px;
-        }
+@media (max-width: 680px) {
+    .payment-page-heading {
+        align-items: stretch;
+        flex-direction: column;
     }
+
+    .live-controls {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .live-controls > * {
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
+    }
+
+    .payment-summary,
+    .filters {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-card strong {
+        font-size: 29px;
+    }
+
+    .table-scroll {
+        overflow: visible;
+    }
+
+    .payments-table {
+        display: block;
+        min-width: 0;
+        padding: 12px;
+    }
+
+    .payments-table thead {
+        display: none;
+    }
+
+    .payments-table tbody {
+        display: grid;
+        gap: 14px;
+    }
+
+    .payments-table tr {
+        display: block;
+        overflow: hidden;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 15px;
+        box-shadow:
+            0 7px 20px rgba(18, 58, 99, .07);
+    }
+
+    .payments-table tbody tr:hover {
+        background: white;
+    }
+
+    .payments-table td {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 11px 14px;
+        text-align: right;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .payments-table td:last-child {
+        border-bottom: 0;
+    }
+
+    .payments-table td::before {
+        flex-shrink: 0;
+        content: attr(data-label);
+        color: var(--muted);
+        text-align: left;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .payments-table td[data-label="Cliente"] {
+        display: block;
+        padding: 16px 14px 12px;
+        color: var(--primary-dark);
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .payments-table td[data-label="Cliente"]::before {
+        display: block;
+        margin-bottom: 7px;
+    }
+
+    .payments-table td[data-label="Monto"] {
+        align-items: center;
+        color: var(--primary-dark);
+        background: #f7fbff;
+    }
+
+    .payments-table td[data-label="Monto"] .amount,
+    .payments-table td.amount {
+        font-size: 22px;
+    }
+
+    .payments-table td[data-label="Acciones"] {
+        display: block;
+        padding: 13px;
+    }
+
+    .payments-table td[data-label="Acciones"]::before {
+        display: none;
+    }
+
+    .payments-table td[data-label="Acciones"] .button-link {
+        width: 100%;
+        min-height: 44px;
+        box-sizing: border-box;
+    }
+
+    .payment-toast {
+        right: 12px;
+        bottom: 90px;
+        width: calc(100% - 24px);
+        box-sizing: border-box;
+    }
+
+    .empty-state {
+        padding: 35px 18px;
+    }
+}
     .payments-pagination {
     margin-top: 22px;
 }
@@ -560,7 +672,7 @@
                 <tbody>
                     @foreach ($payments as $payment)
                         <tr>
-                            <td>
+                            <td data-label="Hora">
                                 {{ $payment->occurred_at
                                     ->timezone(
                                         'America/Lima'
@@ -570,7 +682,7 @@
                                     ) }}
                             </td>
 
-                            <td>
+                            <td data-label="Cliente">
                                 <strong>
                                     {{ $payment->payer_name
                                         ?: 'No identificado' }}
@@ -589,13 +701,13 @@
                                 @endif
                             </td>
 
-                            <td>
+                            <td data-label="Medio">
                                 {{ $payment
                                     ->provider
                                     ->name }}
                             </td>
 
-                            <td class="amount">
+                            <td class="amount"data-label="Monto">
                                 S/
                                 {{ number_format(
                                     $payment->amount,
@@ -608,7 +720,7 @@
         ->first();
 @endphp
 
-<td>
+<td data-label="Verificado por">
     @if ($confirmation)
         <strong>
             {{ $confirmation->user?->name
@@ -630,7 +742,7 @@
     @endif
 </td>
 
-                            <td>
+                            <td data-label="Estado">
                                 <span
                                     class="status status-{{ $payment->status }}"
                                 >
@@ -651,7 +763,7 @@
                                 </span>
                             </td>
 
-                            <td>
+                            <td data-label="Acciones">
                                 <a
                                     class="button button-secondary button-link"
                                     href="{{ route(
