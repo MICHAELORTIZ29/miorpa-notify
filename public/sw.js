@@ -1,4 +1,4 @@
-const CACHE_NAME = 'miorpa-notify-v4';
+const CACHE_NAME = 'miorpa-notify-v5';
 
 self.addEventListener('install', function () {
     self.skipWaiting();
@@ -24,9 +24,81 @@ self.addEventListener('activate', function (event) {
     );
 });
 
+function showPaymentNotification(data) {
+    const payment = data.payment || data;
+
+    const title =
+        data.title ||
+        `Nuevo ${payment.provider || 'pago'}: S/ ${
+            payment.amount || '0.00'
+        }`;
+
+    const body =
+        data.body ||
+        `${payment.payer_name || 'Cliente no identificado'} realizó un pago.`;
+
+    const detailUrl =
+        data.url ||
+        data.detail_url ||
+        payment.detail_url ||
+        '/business/payments';
+
+    const paymentId =
+        data.payment_id ||
+        payment.public_id ||
+        Date.now().toString();
+
+    return self.registration.showNotification(
+        title,
+        {
+            body: body,
+            icon: data.icon || '/logo-icon-192.png',
+            badge: data.badge || '/logo-icon-192.png',
+            tag: data.tag || `miorpa-payment-${paymentId}`,
+            renotify: true,
+            requireInteraction: true,
+            timestamp: Date.now(),
+            data: {
+                url: detailUrl,
+                detail_url: detailUrl,
+                payment_id: paymentId
+            },
+            actions: [
+                {
+                    action: 'open',
+                    title: 'Ver pago'
+                }
+            ]
+        }
+    );
+};
+
 /*
- * Permite que la página solicite una notificación
- * enviando un mensaje al Service Worker.
+ * Notificación enviada por Laravel Web Push.
+ */
+self.addEventListener('push', function (event) {
+    let data = {};
+
+    try {
+        if (event.data) {
+            data = event.data.json();
+        }
+    } catch (error) {
+        data = {
+            title: 'Nuevo pago recibido',
+            body: event.data
+                ? event.data.text()
+                : 'Se recibió un nuevo pago.'
+        };
+    }
+
+    event.waitUntil(
+        showPaymentNotification(data)
+    );
+});
+
+/*
+ * Notificación enviada directamente desde la página.
  */
 self.addEventListener('message', function (event) {
     const data = event.data || {};
@@ -35,77 +107,22 @@ self.addEventListener('message', function (event) {
         return;
     }
 
-    const payment = data.payment || {};
-
-    const paymentId =
-        payment.public_id ||
-        Date.now().toString();
-
-    const amount =
-        payment.amount || '0.00';
-
-    const provider =
-        payment.provider || 'Pago';
-
-    const payer =
-        payment.payer_name ||
-        'Cliente no identificado';
-
-    const detailUrl =
-        payment.detail_url ||
-        '/business/payments';
-
     event.waitUntil(
-        self.registration.showNotification(
-            `Nuevo ${provider}: S/ ${amount}`,
-            {
-                body: `${payer} realizó un pago.`,
-
-                icon: '/logo-icon-192.png',
-
-                badge: '/logo-icon-192.png',
-
-                tag:
-                    `miorpa-payment-${paymentId}`,
-
-                renotify: true,
-
-                requireInteraction: true,
-
-                timestamp: Date.now(),
-
-                data: {
-                    url: detailUrl,
-                    detail_url: detailUrl,
-                    payment_id: paymentId
-                },
-
-                actions: [
-                    {
-                        action: 'open',
-                        title: 'Ver pago'
-                    }
-                ]
-            }
-        )
+        showPaymentNotification(data)
     );
 });
 
-/*
- * Al pulsar la notificación, abre o enfoca
- * la página de pagos.
- */
 self.addEventListener(
     'notificationclick',
     function (event) {
         event.notification.close();
 
-        const notificationData =
+        const data =
             event.notification.data || {};
 
         const detailUrl =
-            notificationData.url ||
-            notificationData.detail_url ||
+            data.url ||
+            data.detail_url ||
             '/business/payments';
 
         event.waitUntil(
@@ -135,16 +152,5 @@ self.addEventListener(
                 return null;
             })
         );
-    }
-);
-
-/*
- * Si el navegador cierra una notificación,
- * no necesitamos realizar ninguna operación.
- */
-self.addEventListener(
-    'notificationclose',
-    function () {
-        // Evento registrado intencionalmente.
     }
 );

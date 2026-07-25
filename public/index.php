@@ -7,19 +7,30 @@ define('LARAVEL_START', microtime(true));
 
 /*
 |--------------------------------------------------------------------------
+| Ocultar advertencias de dependencias en respuestas JSON
+|--------------------------------------------------------------------------
+*/
+
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+
+error_reporting(
+    E_ALL &
+    ~E_WARNING &
+    ~E_NOTICE &
+    ~E_DEPRECATED
+);
+
+/*
+|--------------------------------------------------------------------------
 | Localizar la aplicación Laravel
 |--------------------------------------------------------------------------
-|
-| En local, Laravel está un nivel arriba de public.
-| En cPanel, la carpeta pública está separada y la aplicación está
-| ubicada en /home/miorpaco/miorpa-repo.
-|
 */
 
 $basePath = dirname(__DIR__);
 
-if (! is_file($basePath.'/vendor/autoload.php')) {
-    $basePath = dirname(__DIR__).'/miorpa-repo';
+if (! is_file($basePath . '/vendor/autoload.php')) {
+    $basePath = dirname(__DIR__) . '/miorpa-repo';
 }
 
 /*
@@ -28,7 +39,12 @@ if (! is_file($basePath.'/vendor/autoload.php')) {
 |--------------------------------------------------------------------------
 */
 
-if (file_exists($maintenance = $basePath.'/storage/framework/maintenance.php')) {
+if (
+    file_exists(
+        $maintenance =
+            $basePath . '/storage/framework/maintenance.php'
+    )
+) {
     require $maintenance;
 }
 
@@ -38,7 +54,7 @@ if (file_exists($maintenance = $basePath.'/storage/framework/maintenance.php')) 
 |--------------------------------------------------------------------------
 */
 
-require $basePath.'/vendor/autoload.php';
+require $basePath . '/vendor/autoload.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -47,6 +63,8 @@ require $basePath.'/vendor/autoload.php';
 */
 
 /** @var Application $app */
-$app = require_once $basePath.'/bootstrap/app.php';
+$app = require_once $basePath . '/bootstrap/app.php';
 
-$app->handleRequest(Request::capture());
+$app->handleRequest(
+    Request::capture()
+);

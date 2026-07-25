@@ -34,5 +34,19 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'webpush' => [
+    'subject' => env(
+        'VAPID_SUBJECT',
+        'mailto:admin@miorpa.com'
+    ),
+
+    'public_key' => env(
+        'VAPID_PUBLIC_KEY'
+    ),
+
+    'private_key' => env(
+        'VAPID_PRIVATE_KEY'
+    ),
+],
 
 ];

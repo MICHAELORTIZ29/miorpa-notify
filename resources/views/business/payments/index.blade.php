@@ -803,6 +803,139 @@ document.addEventListener('DOMContentLoaded', function () {
     let toastTimer = null;
     let notificationRegistration = null;
 
+    function base64ToUint8Array(base64String) {
+    const padding = '='.repeat(
+        (4 - base64String.length % 4) % 4
+    );
+
+    const base64 =
+        (base64String + padding)
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+
+    return Uint8Array.from(
+        [...rawData].map(function (char) {
+            return char.charCodeAt(0);
+        })
+    );
+}
+
+async function registerPushSubscription() {
+    if (
+        !('serviceWorker' in navigator) ||
+        !('PushManager' in window) ||
+        !('Notification' in window)
+    ) {
+        console.warn(
+            'Este navegador no soporta Web Push'
+        );
+
+        return false;
+    }
+
+    if (Notification.permission !== 'granted') {
+        return false;
+    }
+
+    try {
+        const registration =
+            await navigator.serviceWorker.ready;
+
+        let subscription =
+            await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+            subscription =
+                await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+
+                    applicationServerKey:
+                        base64ToUint8Array(
+                            @json(
+                                config(
+                                    'services.webpush.public_key'
+                                )
+                            )
+                        )
+                });
+        }
+
+        const subscriptionJson =
+            subscription.toJSON();
+
+        const response = await fetch(
+            @json(route('push.subscriptions.store')),
+            {
+                method: 'POST',
+
+                headers: {
+                    'Content-Type':
+                        'application/json',
+
+                    'Accept':
+                        'application/json',
+
+                    'X-CSRF-TOKEN':
+                        document
+                            .querySelector(
+                                'meta[name="csrf-token"]'
+                            )
+                            .getAttribute('content')
+                },
+
+                credentials: 'same-origin',
+
+                body: JSON.stringify({
+                    endpoint:
+                        subscription.endpoint,
+
+                    keys: {
+                        p256dh:
+                            subscriptionJson.keys.p256dh,
+
+                        auth:
+                            subscriptionJson.keys.auth
+                    },
+
+                    contentEncoding:
+                        'aes128gcm',
+
+                    device_name:
+                        navigator.userAgent,
+
+                    platform:
+                        /Android/i.test(
+                            navigator.userAgent
+                        )
+                            ? 'android-web'
+                            : 'web'
+                })
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                'No se pudo registrar el dispositivo'
+            );
+        }
+
+        console.log(
+            'Dispositivo registrado para Web Push'
+        );
+
+        return true;
+    } catch (error) {
+        console.error(
+            'Error registrando Web Push:',
+            error
+        );
+
+        return false;
+    }
+}
+
     let alertsEnabled =
         localStorage.getItem('miorpa_alerts_enabled') !== '0';
 
@@ -971,11 +1104,17 @@ document.addEventListener('DOMContentLoaded', function () {
             ) {
                 await Notification.requestPermission();
             }
+            if (Notification.permission === 'granted') {
+    await registerPushSubscription();
+}
 
             playPaymentSound();
         }
 
         updateNotificationButton();
+        if (Notification.permission === 'granted') {
+    await registerPushSubscription();
+}
     }
 
     notificationButton.addEventListener(

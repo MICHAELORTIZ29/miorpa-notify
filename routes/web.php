@@ -9,6 +9,7 @@ use App\Http\Controllers\Receiver\ReceiverLinkController;
 use App\Http\Controllers\Business\DashboardController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\PushSubscriptionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -294,3 +295,29 @@ Route::post(
 )
     ->middleware('auth')
     ->name('logout');
+
+
+Route::middleware([
+    'auth',
+    'active.user',
+    'role:administrator,cashier',
+])
+    ->prefix('push')
+    ->name('push.')
+    ->group(function () {
+        Route::post(
+            '/subscriptions',
+            [
+                PushSubscriptionController::class,
+                'store',
+            ]
+        )->name('subscriptions.store');
+
+        Route::delete(
+            '/subscriptions',
+            [
+                PushSubscriptionController::class,
+                'destroy',
+            ]
+        )->name('subscriptions.destroy');
+    });
