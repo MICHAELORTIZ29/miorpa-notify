@@ -164,30 +164,60 @@ class PaymentController extends Controller
         );
     }
 
-    public function liveStatus(
-        Request $request
-    ): JsonResponse {
-        $latestPayment = Payment::query()
-            ->where(
-                'business_id',
-                $request->user()->business_id
-            )
-            ->latest('occurred_at')
-            ->first([
-                'public_id',
-                'occurred_at',
-            ]);
+public function liveStatus(): JsonResponse
+{
+    $business = auth()->user()->business;
 
-        return response()->json([
-            'latest_payment_public_id' =>
-                $latestPayment?->public_id,
+    abort_unless($business, 403);
 
-            'latest_payment_at' =>
-                $latestPayment?->occurred_at?->toISOString(),
+    $latestPayment = Payment::query()
+        ->with('provider')
+        ->where('business_id', $business->id)
+        ->latest('occurred_at')
+        ->first();
 
-            'checked_at' => now()->toISOString(),
-        ]);
-    }
+    return response()->json([
+        'latest_payment_public_id' =>
+            $latestPayment?->public_id,
+
+        'latest_payment_at' =>
+            $latestPayment?->occurred_at?->toISOString(),
+
+        'latest_payment' => $latestPayment
+            ? [
+                'public_id' =>
+                    $latestPayment->public_id,
+
+                'amount' =>
+                    number_format(
+                        (float) $latestPayment->amount,
+                        2,
+                        '.',
+                        ''
+                    ),
+
+                'provider' =>
+                    $latestPayment->provider?->name
+                    ?? 'Pago',
+
+                'payer_name' =>
+                    $latestPayment->payer_name
+                    ?: 'Cliente no identificado',
+
+                'status' =>
+                    $latestPayment->status,
+
+                'detail_url' =>
+                    route(
+                        'business.payments.show',
+                        $latestPayment
+                    ),
+            ]
+            : null,
+
+        'checked_at' => now()->toISOString(),
+    ]);
+}
     public function export(
     PaymentIndexRequest $request
 ): StreamedResponse {
