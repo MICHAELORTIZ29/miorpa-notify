@@ -272,6 +272,87 @@
             min-width: 980px;
         }
     }
+    .payments-pagination {
+    margin-top: 22px;
+}
+
+.payments-pagination nav {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.payments-pagination nav > div:first-child {
+    display: none;
+}
+
+.payments-pagination nav > div:last-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.payments-pagination nav > div:last-child > div:first-child {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.payments-pagination nav > div:last-child > div:last-child {
+    display: flex;
+    align-items: center;
+}
+
+.payments-pagination span[aria-current="page"] > span {
+    color: white;
+    background: var(--primary-dark);
+    border-color: var(--primary-dark);
+}
+
+.payments-pagination a,
+.payments-pagination span {
+    box-sizing: border-box;
+}
+
+.payments-pagination a,
+.payments-pagination span > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 12px;
+    color: var(--primary-dark);
+    text-decoration: none;
+    background: white;
+    border: 1px solid var(--border);
+}
+
+.payments-pagination a:hover {
+    color: white;
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.payments-pagination svg {
+    display: block !important;
+    width: 18px !important;
+    height: 18px !important;
+    max-width: 18px !important;
+    max-height: 18px !important;
+}
+
+@media (max-width: 620px) {
+    .payments-pagination nav > div:last-child {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .payments-pagination nav > div:last-child > div:last-child {
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+}
 </style>
 @endpush
 
@@ -589,357 +670,297 @@
     </div>
 
     @if ($payments->hasPages())
-        <div class="pagination-container">
-            {{ $payments->links() }}
-        </div>
+        <div class="payments-pagination">
+    {{ $payments->onEachSide(1)->links() }}
+</div>
     @endif
 </section>
 
 <script>
-document.addEventListener(
-    'DOMContentLoaded',
-    function () {
-        const liveIndicator =
-            document.getElementById(
-                'live-indicator'
-            );
+document.addEventListener('DOMContentLoaded', function () {
+    const liveIndicator = document.getElementById('live-indicator');
+    const notificationButton = document.getElementById('notification-button');
+    const paymentToast = document.getElementById('payment-toast');
+    const paymentToastAmount = document.getElementById('payment-toast-amount');
+    const paymentToastClient = document.getElementById('payment-toast-client');
 
-        const notificationButton =
-            document.getElementById(
-                'notification-button'
-            );
+    let latestPaymentPublicId = @json($latestPaymentPublicId);
+    let requestInProgress = false;
+    let audioContext = null;
+    let soundReady = false;
+    let toastTimer = null;
+    let notificationRegistration = null;
 
-        const paymentToast =
-            document.getElementById(
-                'payment-toast'
-            );
+    let alertsEnabled =
+        localStorage.getItem('miorpa_alerts_enabled') !== '0';
 
-        const paymentToastAmount =
-            document.getElementById(
-                'payment-toast-amount'
-            );
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(function (registration) {
+            notificationRegistration = registration;
+        });
+    }
 
-        const paymentToastClient =
-            document.getElementById(
-                'payment-toast-client'
-            );
+    function updateIndicator(state, message) {
+        liveIndicator.classList.remove(
+            'checking',
+            'offline',
+            'new-payment'
+        );
 
-        let latestPaymentPublicId =
-            @json($latestPaymentPublicId);
+        if (state) {
+            liveIndicator.classList.add(state);
+        }
 
-        let requestInProgress = false;
-        let audioContext = null;
-        let soundEnabled =
-    localStorage.getItem(
-        'miorpa_alerts_enabled'
-    ) === '1';
-        let toastTimer = null;
-        let notificationRegistration = null;
+        liveIndicator.textContent = message;
+    }
 
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready.then(function (registration) {
-        notificationRegistration = registration;
-    });
-}
+    function updateNotificationButton() {
+        notificationButton.classList.remove(
+            'enabled',
+            'blocked'
+        );
 
-        function updateIndicator(
-            state,
-            message
+        if (!alertsEnabled) {
+            notificationButton.textContent =
+                'Activar sonido y avisos';
+
+            return;
+        }
+
+        if (
+            'Notification' in window &&
+            Notification.permission === 'denied'
         ) {
-            liveIndicator.classList.remove(
-                'checking',
-                'offline',
-                'new-payment'
-            );
+            notificationButton.textContent =
+                'Avisos bloqueados';
 
-            if (state) {
-                liveIndicator.classList.add(state);
-            }
+            notificationButton.classList.add('blocked');
 
-            liveIndicator.textContent = message;
+            return;
         }
 
-        function createAudioContext() {
-            const AudioContextClass =
-                window.AudioContext ||
-                window.webkitAudioContext;
+        notificationButton.textContent =
+            'Sonido y avisos activos';
 
-            if (!AudioContextClass) {
-                return null;
-            }
+        notificationButton.classList.add('enabled');
+    }
 
-            if (!audioContext) {
-                audioContext =
-                    new AudioContextClass();
-            }
+    function createAudioContext() {
+        const AudioContextClass =
+            window.AudioContext ||
+            window.webkitAudioContext;
 
-            return audioContext;
+        if (!AudioContextClass) {
+            return null;
         }
 
-        async function prepareAudio() {
-            const context =
-                createAudioContext();
-
-            if (!context) {
-                return false;
-            }
-
-            if (
-                context.state ===
-                'suspended'
-            ) {
-                await context.resume();
-            }
-
-            soundEnabled =
-                context.state === 'running';
-
-            return soundEnabled;
+        if (!audioContext) {
+            audioContext = new AudioContextClass();
         }
 
-        function playNote(
+        return audioContext;
+    }
+
+    async function prepareAudio() {
+        const context = createAudioContext();
+
+        if (!context) {
+            return false;
+        }
+
+        if (context.state === 'suspended') {
+            await context.resume();
+        }
+
+        soundReady = context.state === 'running';
+
+        return soundReady;
+    }
+
+    function playNote(
+        frequency,
+        startDelay,
+        duration,
+        volume
+    ) {
+        if (
+            !audioContext ||
+            audioContext.state !== 'running'
+        ) {
+            return;
+        }
+
+        const oscillator =
+            audioContext.createOscillator();
+
+        const gain =
+            audioContext.createGain();
+
+        const startsAt =
+            audioContext.currentTime +
+            startDelay;
+
+        oscillator.type = 'sine';
+
+        oscillator.frequency.setValueAtTime(
             frequency,
-            startDelay,
-            duration,
-            volume
-        ) {
-            if (
-                !audioContext ||
-                audioContext.state !==
-                    'running'
-            ) {
-                return;
-            }
+            startsAt
+        );
 
-            const oscillator =
-                audioContext.createOscillator();
+        gain.gain.setValueAtTime(
+            0.0001,
+            startsAt
+        );
 
-            const gain =
-                audioContext.createGain();
+        gain.gain.exponentialRampToValueAtTime(
+            volume,
+            startsAt + 0.02
+        );
 
-            const startsAt =
-                audioContext.currentTime +
-                startDelay;
+        gain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            startsAt + duration
+        );
 
-            oscillator.type = 'sine';
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
 
-            oscillator.frequency
-                .setValueAtTime(
-                    frequency,
-                    startsAt
-                );
+        oscillator.start(startsAt);
 
-            gain.gain.setValueAtTime(
-                0.0001,
-                startsAt
-            );
+        oscillator.stop(
+            startsAt + duration + 0.03
+        );
+    }
 
-            gain.gain
-                .exponentialRampToValueAtTime(
-                    volume,
-                    startsAt + 0.02
-                );
-
-            gain.gain
-                .exponentialRampToValueAtTime(
-                    0.0001,
-                    startsAt + duration
-                );
-
-            oscillator.connect(gain);
-
-            gain.connect(
-                audioContext.destination
-            );
-
-            oscillator.start(startsAt);
-
-            oscillator.stop(
-                startsAt +
-                duration +
-                0.03
-            );
+    function playPaymentSound() {
+        if (!alertsEnabled || !soundReady) {
+            return;
         }
 
-        function playPaymentSound() {
-            if (!soundEnabled) {
-                return;
-            }
+        playNote(659, 0, 0.20, 0.20);
+        playNote(880, 0.18, 0.20, 0.20);
+        playNote(1174, 0.36, 0.34, 0.24);
+    }
 
-            playNote(
-                659,
-                0,
-                0.20,
-                0.20
-            );
+    async function toggleAlerts() {
+        alertsEnabled = !alertsEnabled;
 
-            playNote(
-                880,
-                0.18,
-                0.20,
-                0.20
-            );
+        localStorage.setItem(
+            'miorpa_alerts_enabled',
+            alertsEnabled ? '1' : '0'
+        );
 
-            playNote(
-                1174,
-                0.36,
-                0.34,
-                0.24
-            );
-        }
-
-        function updateNotificationButton() {
-            notificationButton
-                .classList
-                .remove(
-                    'enabled',
-                    'blocked'
-                );
+        if (alertsEnabled) {
+            await prepareAudio();
 
             if (
                 'Notification' in window &&
-                Notification.permission ===
-                    'denied'
+                Notification.permission === 'default'
             ) {
-                notificationButton.textContent =
-                    soundEnabled
-                        ? 'Sonido activo'
-                        : 'Activar sonido';
-
-                notificationButton
-                    .classList
-                    .add('blocked');
-
-                return;
+                await Notification.requestPermission();
             }
 
-            if (soundEnabled) {
-                notificationButton.textContent =
-                    'Sonido y avisos activos';
-
-                notificationButton
-                    .classList
-                    .add('enabled');
-
-                return;
-            }
-
-            notificationButton.textContent =
-                'Sonido y avisos activos';
+            playPaymentSound();
         }
 
-        async function activateAlerts() {
-            try {
-                await prepareAudio();
-
-                if (
-                    'Notification' in window &&
-                    Notification.permission ===
-                        'default'
-                ) {
-                    await Notification
-                        .requestPermission();
-                }
-
-                localStorage.setItem(
-                    'miorpa_alerts_enabled',
-                    '1'
-                );
-
-                updateNotificationButton();
-
-                /*
-                 * Solo prueba el sonido.
-                 * No crea un pago falso.
-                 */
-                playPaymentSound();
-            } catch (error) {
-                notificationButton.textContent =
-                    'No se pudieron activar';
-
-                notificationButton
-                    .classList
-                    .add('blocked');
-            }
-        }
-
-        function showPaymentToast(payment) {
-            if (!payment) {
-                return;
-            }
-
-            paymentToastAmount.textContent =
-                `S/ ${payment.amount ?? '0.00'}`;
-
-            paymentToastClient.textContent =
-                payment.payer_name ||
-                'Cliente no identificado';
-
-            paymentToast.hidden = false;
-
-            if (toastTimer) {
-                window.clearTimeout(
-                    toastTimer
-                );
-            }
-
-            toastTimer =
-                window.setTimeout(
-                    function () {
-                        paymentToast.hidden =
-                            true;
-                    },
-                    6000
-                );
-        }
-
-        function showBrowserNotification(payment) {
-    if (
-        !payment ||
-        !('Notification' in window) ||
-        Notification.permission !== 'granted'
-    ) {
-        return;
+        updateNotificationButton();
     }
 
-    const payload = {
-        type: 'PAYMENT_RECEIVED',
-        payment: {
-            public_id:
-                payment.public_id ||
-                latestPaymentPublicId,
+    notificationButton.addEventListener(
+        'click',
+        toggleAlerts
+    );
 
-            amount:
-                payment.amount || '0.00',
+    document.addEventListener(
+        'pointerdown',
+        function () {
+            if (alertsEnabled && !soundReady) {
+                prepareAudio().then(function () {
+                    updateNotificationButton();
+                });
+            }
+        },
+        { once: true }
+    );
 
-            provider:
-                payment.provider || 'pago',
-
-            payer_name:
-                payment.payer_name ||
-                'Cliente no identificado',
-
-            detail_url:
-                payment.detail_url ||
-                '{{ route('business.payments.index') }}'
+    function showPaymentToast(payment) {
+        if (!payment) {
+            return;
         }
-    };
 
-    if (notificationRegistration) {
-        notificationRegistration.active.postMessage(
-            payload
+        paymentToastAmount.textContent =
+            `S/ ${payment.amount ?? '0.00'}`;
+
+        paymentToastClient.textContent =
+            payment.payer_name ||
+            'Cliente no identificado';
+
+        paymentToast.hidden = false;
+
+        if (toastTimer) {
+            window.clearTimeout(toastTimer);
+        }
+
+        toastTimer = window.setTimeout(
+            function () {
+                paymentToast.hidden = true;
+            },
+            6000
         );
-
-        return;
     }
 
-    try {
+    function showBrowserNotification(payment) {
+        if (
+            !alertsEnabled ||
+            !payment ||
+            !('Notification' in window) ||
+            Notification.permission !== 'granted'
+        ) {
+            return;
+        }
+
+        const payload = {
+            type: 'PAYMENT_RECEIVED',
+            payment: {
+                public_id:
+                    payment.public_id ||
+                    latestPaymentPublicId,
+
+                amount:
+                    payment.amount || '0.00',
+
+                provider:
+                    payment.provider || 'pago',
+
+                payer_name:
+                    payment.payer_name ||
+                    'Cliente no identificado',
+
+                detail_url:
+                    payment.detail_url ||
+                    @json(route('business.payments.index'))
+            }
+        };
+
+        if (
+            notificationRegistration &&
+            notificationRegistration.active
+        ) {
+            notificationRegistration.active.postMessage(
+                payload
+            );
+
+            return;
+        }
+
         const notification = new Notification(
             `Nuevo ${payload.payment.provider}: S/ ${payload.payment.amount}`,
             {
                 body: payload.payment.payer_name,
-                icon: '/logo.png',
-                tag: `miorpa-payment-${payload.payment.public_id}`,
+                icon: '/logo-icon-192.png',
+                badge: '/logo-icon-192.png',
+                tag:
+                    `miorpa-payment-${payload.payment.public_id}`,
                 renotify: true
             }
         );
@@ -948,209 +969,141 @@ if ('serviceWorker' in navigator) {
             window.focus();
             notification.close();
         };
-    } catch (error) {
-        console.error(
-            'No se pudo mostrar la notificación:',
-            error
-        );
     }
-}
 
-        function announcePayment(payment) {
-            playPaymentSound();
+    function announcePayment(payment) {
+        showPaymentToast(payment);
+        playPaymentSound();
+        showBrowserNotification(payment);
+    }
 
-            showBrowserNotification(
-                payment
-            );
-
-            showPaymentToast(
-                payment
-            );
-        }
-
-        async function refreshPaymentsContent() {
-            try {
-                const response =
-                    await fetch(
-                        window.location.href,
-                        {
-                            method: 'GET',
-                            headers: {
-                                'Accept':
-                                    'text/html',
-
-                                'X-Requested-With':
-                                    'XMLHttpRequest'
-                            },
-                            credentials:
-                                'same-origin',
-                            cache: 'no-store'
-                        }
-                    );
-
-                if (!response.ok) {
-                    throw new Error(
-                        'No se pudo actualizar la tabla'
-                    );
-                }
-
-                const html =
-                    await response.text();
-
-                const parser =
-                    new DOMParser();
-
-                const newDocument =
-                    parser.parseFromString(
-                        html,
-                        'text/html'
-                    );
-
-                const newSummary =
-                    newDocument
-                        .getElementById(
-                            'payment-summary'
-                        );
-
-                const newPanel =
-                    newDocument
-                        .getElementById(
-                            'payments-panel'
-                        );
-
-                const currentSummary =
-                    document
-                        .getElementById(
-                            'payment-summary'
-                        );
-
-                const currentPanel =
-                    document
-                        .getElementById(
-                            'payments-panel'
-                        );
-
-                if (
-                    newSummary &&
-                    currentSummary
-                ) {
-                    currentSummary.innerHTML =
-                        newSummary.innerHTML;
-                }
-
-                if (
-                    newPanel &&
-                    currentPanel
-                ) {
-                    currentPanel.innerHTML =
-                        newPanel.innerHTML;
-                }
-            } catch (error) {
-                console.error(
-                    'Error actualizando pagos:',
-                    error
-                );
+    async function refreshPaymentsContent() {
+        const response = await fetch(
+            window.location.href,
+            {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin',
+                cache: 'no-store'
             }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                'No se pudo actualizar la tabla'
+            );
         }
 
-        async function checkForNewPayments() {
-            if (requestInProgress) {
+        const html = await response.text();
+        const parser = new DOMParser();
+        const newDocument =
+            parser.parseFromString(html, 'text/html');
+
+        const newSummary =
+            newDocument.getElementById('payment-summary');
+
+        const newPanel =
+            newDocument.getElementById('payments-panel');
+
+        const currentSummary =
+            document.getElementById('payment-summary');
+
+        const currentPanel =
+            document.getElementById('payments-panel');
+
+        if (newSummary && currentSummary) {
+            currentSummary.innerHTML =
+                newSummary.innerHTML;
+        }
+
+        if (newPanel && currentPanel) {
+            currentPanel.innerHTML =
+                newPanel.innerHTML;
+        }
+    }
+
+    async function checkForNewPayments() {
+        if (requestInProgress) {
+            return;
+        }
+
+        requestInProgress = true;
+
+        try {
+            const response = await fetch(
+                @json(route('business.payments.live-status')),
+                {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                }
+            );
+
+            if (
+                response.status === 401 ||
+                response.status === 419
+            ) {
+                window.location.href =
+                    @json(route('login'));
+
                 return;
             }
 
-            requestInProgress = true;
+            if (response.status === 403) {
+                window.location.href =
+                    @json(route('receiver.link.create'));
 
-            try {
-                const response =
-                    await fetch(
-                        @json(
-                            route(
-                                'business.payments.live-status'
-                            )
-                        ),
-                        {
-                            method: 'GET',
-                            headers: {
-                                'Accept':
-                                    'application/json',
+                return;
+            }
 
-                                'X-Requested-With':
-                                    'XMLHttpRequest'
-                            },
-                            credentials:
-                                'same-origin',
-                            cache: 'no-store'
-                        }
-                    );
+            if (!response.ok) {
+                throw new Error(
+                    'Respuesta HTTP ' +
+                    response.status
+                );
+            }
 
-                if (
-                    response.status === 401 ||
-                    response.status === 419
-                ) {
-                    window.location.href =
-                        @json(route('login'));
+            const data = await response.json();
 
-                    return;
-                }
+            const newPaymentPublicId =
+                data.latest_payment_public_id ?? null;
 
-                if (response.status === 403) {
-                    window.location.href =
-                        @json(
-                            route(
-                                'receiver.link.create'
-                            )
+            if (
+                newPaymentPublicId &&
+                newPaymentPublicId !==
+                    latestPaymentPublicId
+            ) {
+                latestPaymentPublicId =
+                    newPaymentPublicId;
+
+                updateIndicator(
+                    'new-payment',
+                    'Nuevo pago recibido'
+                );
+
+                announcePayment(
+                    data.latest_payment
+                );
+
+                await refreshPaymentsContent();
+
+                window.setTimeout(
+                    function () {
+                        updateIndicator(
+                            '',
+                            'Actualización automática'
                         );
-
-                    return;
-                }
-
-                if (!response.ok) {
-                    throw new Error(
-                        'Respuesta HTTP ' +
-                        response.status
-                    );
-                }
-
-                const data =
-                    await response.json();
-
-                const newPaymentPublicId =
-                    data
-                        .latest_payment_public_id ??
-                    null;
-
-                if (
-                    newPaymentPublicId &&
-                    newPaymentPublicId !==
-                        latestPaymentPublicId
-                ) {
-                    latestPaymentPublicId =
-                        newPaymentPublicId;
-
-                    updateIndicator(
-                        'new-payment',
-                        'Nuevo pago recibido'
-                    );
-
-                    announcePayment(
-                        data.latest_payment
-                    );
-
-                    await refreshPaymentsContent();
-
-                    window.setTimeout(
-                        function () {
-                            updateIndicator(
-                                '',
-                                'Actualización automática'
-                            );
-                        },
-                        4500
-                    );
-
-                    return;
-                }
-
+                    },
+                    4500
+                );
+            } else {
                 latestPaymentPublicId =
                     newPaymentPublicId;
 
@@ -1158,98 +1111,29 @@ if ('serviceWorker' in navigator) {
                     '',
                     'Actualización automática'
                 );
-            } catch (error) {
-                console.error(
-                    'Error consultando pagos:',
-                    error
-                );
-
-                updateIndicator(
-                    'offline',
-                    'Intentando reconectar'
-                );
-            } finally {
-                requestInProgress = false;
             }
-        }
-
-        notificationButton
-            .addEventListener(
-                'click',
-                activateAlerts
+        } catch (error) {
+            console.error(
+                'Error consultando pagos:',
+                error
             );
 
-        /*
-         * Si el usuario ya lo activó anteriormente,
-         * cualquier interacción de la página intenta
-         * reactivar el audio sin obligarlo a buscar
-         * nuevamente el botón.
-         */
-        document.addEventListener(
-    'pointerdown',
-    function activateDefaultAlerts() {
-        if (
-            localStorage.getItem(
-                'miorpa_alerts_enabled'
-            ) !== '1'
-        ) {
-            prepareAudio();
-
-            if (
-                'Notification' in window &&
-                Notification.permission === 'default'
-            ) {
-                Notification.requestPermission();
-            }
-
-            localStorage.setItem(
-                'miorpa_alerts_enabled',
-                '1'
+            updateIndicator(
+                'offline',
+                'Intentando reconectar'
             );
-
-            updateNotificationButton();
+        } finally {
+            requestInProgress = false;
         }
-
-        document.removeEventListener(
-            'pointerdown',
-            activateDefaultAlerts
-        );
-    },
-    { once: true }
-);
-
-        window.setInterval(
-            checkForNewPayments,
-            5000
-        );
-
-        document.addEventListener(
-            'visibilitychange',
-            function () {
-                if (!document.hidden) {
-                    checkForNewPayments();
-                }
-            }
-        );
-
-        window.addEventListener(
-            'online',
-            checkForNewPayments
-        );
-
-        window.addEventListener(
-            'offline',
-            function () {
-                updateIndicator(
-                    'offline',
-                    'Sin conexión'
-                );
-            }
-        );
-
-        updateNotificationButton();
-        checkForNewPayments();
     }
-);
+
+    updateNotificationButton();
+    checkForNewPayments();
+
+    window.setInterval(
+        checkForNewPayments,
+        5000
+    );
+});
 </script>
 @endsection
