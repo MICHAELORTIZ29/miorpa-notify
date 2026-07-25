@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    if (! auth()->check()) {
+    if (!auth()->check()) {
         return redirect()->route('login');
     }
 
@@ -118,18 +118,22 @@ Route::prefix('superadmin')
             'businesses/{business}/activate',
             [BusinessController::class, 'activate']
         )->name('businesses.activate');
+        Route::delete(
+            'businesses/{business}',
+            [BusinessController::class, 'destroy']
+        )->name('businesses.destroy');
 
         Route::resource(
             'businesses',
             BusinessController::class
         )->only([
-            'index',
-            'create',
-            'store',
-            'show',
-            'edit',
-            'update',
-        ]);
+                    'index',
+                    'create',
+                    'store',
+                    'show',
+                    'edit',
+                    'update',
+                ]);
     });
 
 /*
@@ -171,12 +175,12 @@ Route::prefix('business')
             'users',
             BusinessUserController::class
         )->only([
-            'index',
-            'create',
-            'store',
-            'edit',
-            'update',
-        ]);
+                    'index',
+                    'create',
+                    'store',
+                    'edit',
+                    'update',
+                ]);
 
         /*
         |--------------------------------------------------------------------------

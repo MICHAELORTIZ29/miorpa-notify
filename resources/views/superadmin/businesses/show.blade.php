@@ -213,6 +213,63 @@
         grid-template-columns: 1fr;
     }
 }
+@push('styles')
+<style>
+    .danger-zone {
+        margin-top: 24px;
+        padding: 24px;
+        border: 1px solid #f3b7b2;
+        border-radius: 16px;
+        background: #fff7f6;
+    }
+
+    .danger-zone h2 {
+        margin-top: 0;
+        color: #b42318;
+    }
+
+    .danger-zone p {
+        color: #7a271a;
+        line-height: 1.5;
+    }
+
+    .danger-zone form {
+        display: grid;
+        gap: 10px;
+        max-width: 480px;
+    }
+
+    .danger-zone label {
+        color: #7a271a;
+        font-weight: 700;
+    }
+
+    .danger-zone input {
+        height: 46px;
+        box-sizing: border-box;
+        padding: 0 13px;
+        border: 1px solid #e5a39d;
+        border-radius: 9px;
+        background: #fff;
+        font: inherit;
+    }
+
+    .button-danger {
+        color: #fff;
+        border: 0;
+        background: #b42318;
+    }
+
+    .button-danger:hover {
+        background: #8f1d14;
+    }
+
+    .field-error {
+        color: #b42318;
+        font-size: 14px;
+    }
+</style>
+@endpush
         
     </style>
 @endpush
@@ -544,5 +601,55 @@
     @endif
 </article>
     </section>
+    <section class="danger-zone">
+    <h2>Zona peligrosa</h2>
+
+    <p>
+        Esta acción eliminará permanentemente el negocio,
+        sus usuarios, dispositivos, pagos, códigos y suscripción.
+    </p>
+
+    <form
+        method="POST"
+        action="{{ route(
+            'superadmin.businesses.destroy',
+            $business
+        ) }}"
+        onsubmit="
+            return confirm(
+                'Esta acción es irreversible. ¿Deseas continuar?'
+            );
+        "
+    >
+        @csrf
+        @method('DELETE')
+
+        <label for="confirmation_tax_id">
+            Escribe el RUC del negocio para confirmar
+        </label>
+
+        <input
+            id="confirmation_tax_id"
+            name="confirmation_tax_id"
+            type="text"
+            value="{{ old('confirmation_tax_id') }}"
+            placeholder="{{ $business->tax_id }}"
+            required
+        >
+
+        @error('confirmation_tax_id')
+            <div class="field-error">
+                {{ $message }}
+            </div>
+        @enderror
+
+        <button
+            type="submit"
+            class="button button-danger"
+        >
+            Eliminar negocio definitivamente
+        </button>
+    </form>
+</section>
     
 @endsection

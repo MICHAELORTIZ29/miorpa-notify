@@ -629,8 +629,18 @@ document.addEventListener(
 
         let requestInProgress = false;
         let audioContext = null;
-        let soundEnabled = false;
+        let soundEnabled =
+    localStorage.getItem(
+        'miorpa_alerts_enabled'
+    ) === '1';
         let toastTimer = null;
+        let notificationRegistration = null;
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(function (registration) {
+        notificationRegistration = registration;
+    });
+}
 
         function updateIndicator(
             state,
@@ -815,7 +825,7 @@ document.addEventListener(
             }
 
             notificationButton.textContent =
-                'Activar sonido y avisos';
+                'Sonido y avisos activos';
         }
 
         async function activateAlerts() {
@@ -883,59 +893,68 @@ document.addEventListener(
                 );
         }
 
-        function showBrowserNotification(
-            payment
-        ) {
-            if (
-                !payment ||
-                !('Notification' in window) ||
-                Notification.permission !==
-                    'granted'
-            ) {
-                return;
-            }
+        function showBrowserNotification(payment) {
+    if (
+        !payment ||
+        !('Notification' in window) ||
+        Notification.permission !== 'granted'
+    ) {
+        return;
+    }
 
-            try {
-                const notification =
-                    new Notification(
-                        `Nuevo ${
-                            payment.provider ??
-                            'pago'
-                        }: S/ ${
-                            payment.amount
-                        }`,
-                        {
-                            body:
-                                payment.payer_name ||
-                                'Cliente no identificado',
+    const payload = {
+        type: 'PAYMENT_RECEIVED',
+        payment: {
+            public_id:
+                payment.public_id ||
+                latestPaymentPublicId,
 
-                            tag:
-                                'miorpa-payment-' +
-                                latestPaymentPublicId
-                        }
-                    );
+            amount:
+                payment.amount || '0.00',
 
-                notification.onclick =
-                    function () {
-                        window.focus();
+            provider:
+                payment.provider || 'pago',
 
-                        if (
-                            payment.detail_url
-                        ) {
-                            window.location.href =
-                                payment
-                                    .detail_url;
-                        }
+            payer_name:
+                payment.payer_name ||
+                'Cliente no identificado',
 
-                        notification.close();
-                    };
-            } catch (error) {
-                console.error(
-                    'No se pudo mostrar la notificación.',
-                    error
-                );
-            }
+            detail_url:
+                payment.detail_url ||
+                '{{ route('business.payments.index') }}'
         }
+    };
+
+    if (notificationRegistration) {
+        notificationRegistration.active.postMessage(
+            payload
+        );
+
+        return;
+    }
+
+    try {
+        const notification = new Notification(
+            `Nuevo ${payload.payment.provider}: S/ ${payload.payment.amount}`,
+            {
+                body: payload.payment.payer_name,
+                icon: '/logo.png',
+                tag: `miorpa-payment-${payload.payment.public_id}`,
+                renotify: true
+            }
+        );
+
+        notification.onclick = function () {
+            window.focus();
+            notification.close();
+        };
+    } catch (error) {
+        console.error(
+            'No se pudo mostrar la notificación:',
+            error
+        );
+    }
+}
 
         function announcePayment(payment) {
             playPaymentSound();
@@ -1167,21 +1186,37 @@ document.addEventListener(
          * nuevamente el botón.
          */
         document.addEventListener(
-            'pointerdown',
-            function () {
-                if (
-                    localStorage.getItem(
-                        'miorpa_alerts_enabled'
-                    ) === '1' &&
-                    !soundEnabled
-                ) {
-                    prepareAudio()
-                        .then(
-                            updateNotificationButton
-                        );
-                }
+    'pointerdown',
+    function activateDefaultAlerts() {
+        if (
+            localStorage.getItem(
+                'miorpa_alerts_enabled'
+            ) !== '1'
+        ) {
+            prepareAudio();
+
+            if (
+                'Notification' in window &&
+                Notification.permission === 'default'
+            ) {
+                Notification.requestPermission();
             }
+
+            localStorage.setItem(
+                'miorpa_alerts_enabled',
+                '1'
+            );
+
+            updateNotificationButton();
+        }
+
+        document.removeEventListener(
+            'pointerdown',
+            activateDefaultAlerts
         );
+    },
+    { once: true }
+);
 
         window.setInterval(
             checkForNewPayments,

@@ -1,25 +1,37 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" type="image/png" href="{{ asset('logo-icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ asset('logo-icon-192.png') }}">
+<link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
+<meta name="theme-color" content="#092f4e">
 
     <title>@yield('title', 'MIORPA NOTIFY')</title>
 
     <style>
         :root {
-            --primary: #123a63;
-            --primary-dark: #0a2948;
-            --accent: #13a89e;
-            --background: #f4f7fb;
-            --surface: #ffffff;
-            --text: #182230;
-            --muted: #667085;
-            --border: #dce3ec;
-            --danger: #b42318;
-            --success: #067647;
+            --primary-dark: #092A47;
+            --primary: #124B73;
+            --primary-light: #EAF3FA;
+            --accent-blue: #1464D2;
+            --accent-orange: #F79300;
+            --background: #F4F7FB;
+            --text: #102A43;
+            --muted: #60758A;
+            --border: #D6E1EC;
         }
+        .topbar {
+    background: linear-gradient(
+        135deg,
+        #092A47 0%,
+        #0D4665 55%,
+        #126E78 100%
+    );
+}
 
         * {
             box-sizing: border-box;
@@ -137,8 +149,10 @@
 
     @stack('styles')
 </head>
+
 <body>
     @yield('content')
     @stack('scripts')
 </body>
+
 </html>

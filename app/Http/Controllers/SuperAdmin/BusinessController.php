@@ -14,43 +14,201 @@ use Illuminate\View\View;
 use App\Models\Plan;
 use App\Models\Subscription;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Request;
+
+
+
 
 class BusinessController extends Controller
 {
-    public function index(): View
-    {
-        $businesses = Business::query()
-            ->with([
-                'users' => fn($query) => $query
-                    ->where('role_code', User::ROLE_ADMINISTRATOR)
-                    ->orderBy('name'),
+public function destroy(
+    Request $request,
+    Business $business
+): RedirectResponse {
+    $request->validate([
+        'confirmation_tax_id' => [
+            'required',
+            'string',
+            'max:30',
+        ],
+    ], [
+        'confirmation_tax_id.required' =>
+            'Debes ingresar el RUC para confirmar.',
+    ]);
+
+    $enteredTaxId = trim(
+        (string) $request->input('confirmation_tax_id')
+    );
+
+    $businessTaxId = trim(
+        (string) $business->tax_id
+    );
+
+    if (
+        $businessTaxId === ''
+        || ! hash_equals(
+            $businessTaxId,
+            $enteredTaxId
+        )
+    ) {
+        return back()
+            ->withErrors([
+                'confirmation_tax_id' =>
+                    'El RUC no coincide con el negocio.',
             ])
-            ->withCount('users')
-            ->latest()
-            ->paginate(15);
+            ->withInput();
+    }
 
-        $totalBusinesses = Business::query()->count();
+    $businessName = $business->name;
 
-        $activeBusinesses = Business::query()
-            ->where('status', Business::STATUS_ACTIVE)
-            ->count();
+    DB::transaction(function () use ($business): void {
+        $paymentIds = DB::table('payments')
+            ->where('business_id', $business->id)
+            ->pluck('id');
 
-        $trialBusinesses = Business::query()
-            ->where('status', Business::STATUS_TRIAL)
-            ->count();
+        if ($paymentIds->isNotEmpty()) {
+            DB::table('payment_acknowledgements')
+                ->whereIn('payment_id', $paymentIds)
+                ->delete();
+        }
 
-        $suspendedBusinesses = Business::query()
-            ->where('status', Business::STATUS_SUSPENDED)
-            ->count();
+        DB::table('payments')
+            ->where('business_id', $business->id)
+            ->delete();
 
-        return view('superadmin.businesses.index', compact(
+        DB::table('pairing_codes')
+            ->where('business_id', $business->id)
+            ->delete();
+
+        DB::table('devices')
+            ->where('business_id', $business->id)
+            ->delete();
+
+        $subscriptionIds = DB::table('subscriptions')
+            ->where('business_id', $business->id)
+            ->pluck('id');
+
+        if ($subscriptionIds->isNotEmpty()) {
+            DB::table('subscription_limit_overrides')
+                ->whereIn(
+                    'subscription_id',
+                    $subscriptionIds
+                )
+                ->delete();
+        }
+
+        DB::table('subscriptions')
+            ->where('business_id', $business->id)
+            ->delete();
+
+        DB::table('users')
+            ->where('business_id', $business->id)
+            ->delete();
+
+        $business->delete();
+    });
+
+    return redirect()
+        ->route('superadmin.businesses.index')
+        ->with(
+            'success',
+            "El negocio {$businessName} y todos sus datos fueron eliminados."
+        );
+}
+public function index(Request $request): View
+{
+    $search = trim(
+        (string) $request->query('search', '')
+    );
+
+    $status = (string) $request->query('status', '');
+
+    $allowedStatuses = [
+        Business::STATUS_TRIAL,
+        Business::STATUS_ACTIVE,
+        Business::STATUS_OVERDUE,
+        Business::STATUS_SUSPENDED,
+        Business::STATUS_CLOSED,
+    ];
+
+    if (! in_array($status, $allowedStatuses, true)) {
+        $status = '';
+    }
+
+    $businesses = Business::query()
+        ->with([
+            'users' => fn ($query) => $query
+                ->where(
+                    'role_code',
+                    User::ROLE_ADMINISTRATOR
+                )
+                ->orderBy('name'),
+
+            'currentSubscription.plan',
+        ])
+        ->withCount('users')
+        ->when(
+            $search !== '',
+            function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('legal_name', 'like', "%{$search}%")
+                        ->orWhere('tax_id', 'like', "%{$search}%")
+                        ->orWhere('contact_email', 'like', "%{$search}%")
+                        ->orWhereHas(
+                            'users',
+                            function ($query) use ($search): void {
+                                $query
+                                    ->where('name', 'like', "%{$search}%")
+                                    ->orWhere(
+                                        'email',
+                                        'like',
+                                        "%{$search}%"
+                                    );
+                            }
+                        );
+                });
+            }
+        )
+        ->when(
+            $status !== '',
+            fn ($query) => $query->where(
+                'status',
+                $status
+            )
+        )
+        ->latest()
+        ->paginate(15)
+        ->withQueryString();
+
+    $totalBusinesses = Business::query()->count();
+
+    $activeBusinesses = Business::query()
+        ->where('status', Business::STATUS_ACTIVE)
+        ->count();
+
+    $trialBusinesses = Business::query()
+        ->where('status', Business::STATUS_TRIAL)
+        ->count();
+
+    $suspendedBusinesses = Business::query()
+        ->where('status', Business::STATUS_SUSPENDED)
+        ->count();
+
+    return view(
+        'superadmin.businesses.index',
+        compact(
             'businesses',
             'totalBusinesses',
             'activeBusinesses',
             'trialBusinesses',
-            'suspendedBusinesses'
-        ));
-    }
+            'suspendedBusinesses',
+            'search',
+            'status'
+        )
+    );
+}
 
     public function create(): View
     {
