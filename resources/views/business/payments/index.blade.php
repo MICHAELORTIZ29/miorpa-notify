@@ -909,73 +909,100 @@ document.addEventListener('DOMContentLoaded', function () {
         );
     }
 
-    function showBrowserNotification(payment) {
-        if (
-            !alertsEnabled ||
-            !payment ||
-            !('Notification' in window) ||
-            Notification.permission !== 'granted'
-        ) {
-            return;
-        }
-
-        const payload = {
-            type: 'PAYMENT_RECEIVED',
-            payment: {
-                public_id:
-                    payment.public_id ||
-                    latestPaymentPublicId,
-
-                amount:
-                    payment.amount || '0.00',
-
-                provider:
-                    payment.provider || 'pago',
-
-                payer_name:
-                    payment.payer_name ||
-                    'Cliente no identificado',
-
-                detail_url:
-                    payment.detail_url ||
-                    @json(route('business.payments.index'))
+ async function showBrowserNotification(payment) {
+    if (
+        !alertsEnabled ||
+        !payment ||
+        !('Notification' in window) ||
+        Notification.permission !== 'granted'
+    ) {
+        console.warn(
+            'Notificación omitida:',
+            {
+                alertsEnabled: alertsEnabled,
+                payment: payment,
+                permission:
+                    'Notification' in window
+                        ? Notification.permission
+                        : 'no compatible'
             }
-        };
+        );
 
-        if (
-            notificationRegistration &&
-            notificationRegistration.active
-        ) {
-            notificationRegistration.active.postMessage(
-                payload
+        return;
+    }
+
+    const paymentId =
+        payment.public_id ||
+        latestPaymentPublicId ||
+        Date.now().toString();
+
+    const amount =
+        payment.amount || '0.00';
+
+    const provider =
+        payment.provider || 'pago';
+
+    const payerName =
+        payment.payer_name ||
+        'Cliente no identificado';
+
+    const detailUrl =
+        payment.detail_url ||
+        @json(route('business.payments.index'));
+
+    const options = {
+        body: payerName,
+        icon: '/logo-icon-192.png',
+        badge: '/logo-icon-192.png',
+        tag: `miorpa-payment-${paymentId}`,
+        renotify: true,
+        requireInteraction: true,
+        data: {
+            url: detailUrl,
+            payment_id: paymentId
+        }
+    };
+
+    try {
+        if ('serviceWorker' in navigator) {
+            const registration =
+                await navigator.serviceWorker.ready;
+
+            await registration.showNotification(
+                `Nuevo ${provider}: S/ ${amount}`,
+                options
+            );
+
+            console.log(
+                'Notificación mostrada mediante Service Worker'
             );
 
             return;
         }
 
         const notification = new Notification(
-            `Nuevo ${payload.payment.provider}: S/ ${payload.payment.amount}`,
-            {
-                body: payload.payment.payer_name,
-                icon: '/logo-icon-192.png',
-                badge: '/logo-icon-192.png',
-                tag:
-                    `miorpa-payment-${payload.payment.public_id}`,
-                renotify: true
-            }
+            `Nuevo ${provider}: S/ ${amount}`,
+            options
         );
 
         notification.onclick = function () {
             window.focus();
+            window.location.href = detailUrl;
             notification.close();
         };
+    } catch (error) {
+        console.error(
+            'No se pudo mostrar la notificación:',
+            error
+        );
     }
+}
 
-    function announcePayment(payment) {
-        showPaymentToast(payment);
-        playPaymentSound();
-        showBrowserNotification(payment);
-    }
+    async function announcePayment(payment) {
+    showPaymentToast(payment);
+    playPaymentSound();
+    await showBrowserNotification(payment);
+}
 
     async function refreshPaymentsContent() {
         const response = await fetch(
