@@ -50,6 +50,7 @@ return array(
     'App\\Models\\User' => $baseDir . '/app/Models/User.php',
     'App\\Providers\\AppServiceProvider' => $baseDir . '/app/Providers/AppServiceProvider.php',
     'App\\Services\\SubscriptionStatusService' => $baseDir . '/app/Services/SubscriptionStatusService.php',
+    'App\\Services\\WebPushNotificationService' => $baseDir . '/app/Services/WebPushNotificationService.php',
     'Attribute' => $vendorDir . '/symfony/polyfill-php80/Resources/stubs/Attribute.php',
     'Base64Url\\Base64Url' => $vendorDir . '/spomky-labs/base64url/src/Base64Url.php',
     'Brick\\Math\\BigDecimal' => $vendorDir . '/brick/math/src/BigDecimal.php',

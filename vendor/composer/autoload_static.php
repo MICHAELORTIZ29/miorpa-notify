@@ -719,6 +719,7 @@ class ComposerStaticInit36793882908b6cbdd344b5a4840231db
         'App\\Models\\User' => __DIR__ . '/../..' . '/app/Models/User.php',
         'App\\Providers\\AppServiceProvider' => __DIR__ . '/../..' . '/app/Providers/AppServiceProvider.php',
         'App\\Services\\SubscriptionStatusService' => __DIR__ . '/../..' . '/app/Services/SubscriptionStatusService.php',
+        'App\\Services\\WebPushNotificationService' => __DIR__ . '/../..' . '/app/Services/WebPushNotificationService.php',
         'Attribute' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/Attribute.php',
         'Base64Url\\Base64Url' => __DIR__ . '/..' . '/spomky-labs/base64url/src/Base64Url.php',
         'Brick\\Math\\BigDecimal' => __DIR__ . '/..' . '/brick/math/src/BigDecimal.php',
