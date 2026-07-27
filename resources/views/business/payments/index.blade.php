@@ -828,42 +828,78 @@ async function registerPushSubscription() {
         !('PushManager' in window) ||
         !('Notification' in window)
     ) {
-        console.warn(
-            'Este navegador no soporta Web Push'
-        );
-
+        console.warn('Este navegador no soporta Web Push');
         return false;
     }
 
     if (Notification.permission !== 'granted') {
+        console.warn('El permiso de notificaciones no fue concedido');
         return false;
     }
 
     try {
-        const registration =
-            await navigator.serviceWorker.ready;
+        const registration = await navigator.serviceWorker.ready;
 
         let subscription =
             await registration.pushManager.getSubscription();
 
         if (!subscription) {
+            const keyResponse = await fetch(
+                @json(route('push.vapid-public-key')),
+                {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                }
+            );
+
+            if (!keyResponse.ok) {
+                throw new Error(
+                    'No se pudo obtener la clave pública VAPID. HTTP ' +
+                    keyResponse.status
+                );
+            }
+
+            const keyData = await keyResponse.json();
+
+            const publicKey = String(
+                keyData.publicKey || ''
+            ).trim();
+
+            if (!publicKey) {
+                throw new Error(
+                    'La clave pública VAPID está vacía'
+                );
+            }
+
+            const applicationServerKey =
+                base64ToUint8Array(publicKey);
+
+            console.log(
+                'Longitud de clave VAPID decodificada:',
+                applicationServerKey.length
+            );
+
+            if (applicationServerKey.length !== 65) {
+                throw new Error(
+                    'La clave pública VAPID no es válida. ' +
+                    'Longitud decodificada: ' +
+                    applicationServerKey.length
+                );
+            }
+
             subscription =
                 await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-
                     applicationServerKey:
-                        base64ToUint8Array(
-                            @json(
-                                config(
-                                    'services.webpush.public_key'
-                                )
-                            )
-                        )
+                        applicationServerKey
                 });
         }
 
-        const subscriptionJson =
-            subscription.toJSON();
+        const subscriptionJson = subscription.toJSON();
 
         const response = await fetch(
             @json(route('push.subscriptions.store')),
@@ -871,58 +907,37 @@ async function registerPushSubscription() {
                 method: 'POST',
 
                 headers: {
-                    'Content-Type':
-                        'application/json',
-
-                    'Accept':
-                        'application/json',
-
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
                     'X-CSRF-TOKEN':
-                        document
-                            .querySelector(
-                                'meta[name="csrf-token"]'
-                            )
-                            .getAttribute('content')
+                        document.querySelector(
+                            'meta[name="csrf-token"]'
+                        ).getAttribute('content')
                 },
 
                 credentials: 'same-origin',
 
                 body: JSON.stringify({
-                    endpoint:
-                        subscription.endpoint,
-
-                    keys: {
-                        p256dh:
-                            subscriptionJson.keys.p256dh,
-
-                        auth:
-                            subscriptionJson.keys.auth
-                    },
-
-                    contentEncoding:
-                        'aes128gcm',
-
-                    device_name:
-                        navigator.userAgent,
-
-                    platform:
-                        /Android/i.test(
-                            navigator.userAgent
-                        )
-                            ? 'android-web'
-                            : 'web'
+                    endpoint: subscriptionJson.endpoint,
+                    keys: subscriptionJson.keys
                 })
             }
         );
 
         if (!response.ok) {
+            const errorText = await response.text();
+
             throw new Error(
-                'No se pudo registrar el dispositivo'
+                'No se pudo guardar la suscripción. HTTP ' +
+                response.status +
+                ': ' +
+                errorText
             );
         }
 
         console.log(
-            'Dispositivo registrado para Web Push'
+            'Web Push registrado correctamente',
+            subscription
         );
 
         return true;
@@ -1087,35 +1102,36 @@ async function registerPushSubscription() {
         playNote(1174, 0.36, 0.34, 0.24);
     }
 
-    async function toggleAlerts() {
-        alertsEnabled = !alertsEnabled;
+  async function toggleAlerts() {
+    alertsEnabled = !alertsEnabled;
 
-        localStorage.setItem(
-            'miorpa_alerts_enabled',
-            alertsEnabled ? '1' : '0'
-        );
+    localStorage.setItem(
+        'miorpa_alerts_enabled',
+        alertsEnabled ? '1' : '0'
+    );
 
-        if (alertsEnabled) {
-            await prepareAudio();
+    if (alertsEnabled) {
+        await prepareAudio();
 
-            if (
-                'Notification' in window &&
-                Notification.permission === 'default'
-            ) {
-                await Notification.requestPermission();
-            }
-            if (Notification.permission === 'granted') {
-    await registerPushSubscription();
-}
-
-            playPaymentSound();
+        if (
+            'Notification' in window &&
+            Notification.permission === 'default'
+        ) {
+            await Notification.requestPermission();
         }
 
-        updateNotificationButton();
-        if (Notification.permission === 'granted') {
-    await registerPushSubscription();
-}
+        if (
+            'Notification' in window &&
+            Notification.permission === 'granted'
+        ) {
+            await registerPushSubscription();
+        }
+
+        playPaymentSound();
     }
+
+    updateNotificationButton();
+}
 
     notificationButton.addEventListener(
         'click',
