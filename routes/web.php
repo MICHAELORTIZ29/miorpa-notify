@@ -305,10 +305,24 @@ Route::middleware([
     ->prefix('push')
     ->name('push.')
     ->group(function () {
+        Route::get('/vapid-public-key', function () {
+            $publicKey = (string) config('services.webpush.public_key');
+
+            abort_if(
+                trim($publicKey) === '',
+                503,
+                'La clave pública VAPID no está configurada.'
+            );
+
+            return response()->json([
+                'publicKey' => $publicKey,
+            ]);
+        })->name('vapid-public-key');
+
         Route::post(
             '/subscriptions',
             [
-                PushSubscriptionController::class,
+                \App\Http\Controllers\PushSubscriptionController::class,
                 'store',
             ]
         )->name('subscriptions.store');
@@ -316,7 +330,7 @@ Route::middleware([
         Route::delete(
             '/subscriptions',
             [
-                PushSubscriptionController::class,
+                \App\Http\Controllers\PushSubscriptionController::class,
                 'destroy',
             ]
         )->name('subscriptions.destroy');
