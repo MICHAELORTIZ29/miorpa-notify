@@ -11,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use App\Models\Device;
@@ -22,23 +23,25 @@ class PaymentController extends Controller
     {
         $user = $request->user();
         $filters = $request->validated();
+        $timezone = $user->business?->timezone
+            ?: 'America/Lima';
 
         $query = Payment::query()
             ->where('business_id', $user->business_id)
             ->with([
-    'provider',
-    'emitterDevice',
+                'provider',
+                'emitterDevice',
 
-    'acknowledgements' => fn ($query) =>
-        $query
-            ->whereNotNull('confirmed_at')
-            ->oldest('confirmed_at'),
+                'acknowledgements' => fn($query) =>
+                    $query
+                        ->whereNotNull('confirmed_at')
+                        ->oldest('confirmed_at'),
 
-    'acknowledgements.user:id,name',
-    'acknowledgements.receiverDevice:id,name',
-])
+                'acknowledgements.user:id,name',
+                'acknowledgements.receiverDevice:id,name',
+            ])
             ->withExists([
-                'acknowledgements as confirmed_by_user' => fn ($query) =>
+                'acknowledgements as confirmed_by_user' => fn($query) =>
                     $query
                         ->where('user_id', $user->id)
                         ->whereNotNull('confirmed_at'),
@@ -48,8 +51,8 @@ class PaymentController extends Controller
         $query
             ->when(
                 $filters['search'] ?? null,
-                fn ($query, $search) => $query->where(
-                    fn ($query) => $query
+                fn($query, $search) => $query->where(
+                    fn($query) => $query
                         ->where(
                             'payer_name',
                             'like',
@@ -64,9 +67,9 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['provider'] ?? null,
-                fn ($query, $provider) => $query->whereHas(
+                fn($query, $provider) => $query->whereHas(
                     'provider',
-                    fn ($query) => $query->where(
+                    fn($query) => $query->where(
                         'code',
                         $provider
                     )
@@ -74,40 +77,57 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['status'] ?? null,
-                fn ($query, $status) => $query->where(
+                fn($query, $status) => $query->where(
                     'status',
                     $status
                 )
             )
             ->when(
                 $filters['amount'] ?? null,
-                fn ($query, $amount) => $query->where(
+                fn($query, $amount) => $query->where(
                     'amount',
                     $amount
                 )
             )
             ->when(
                 $filters['date_from'] ?? null,
-                fn ($query, $date) => $query->where(
+                fn($query, $date) => $query->where(
                     'occurred_at',
                     '>=',
                     CarbonImmutable::parse(
                         $date,
-                        'America/Lima'
+                        $timezone
                     )->startOfDay()->utc()
                 )
             )
             ->when(
                 $filters['date_to'] ?? null,
-                fn ($query, $date) => $query->where(
+                fn($query, $date) => $query->where(
                     'occurred_at',
                     '<=',
                     CarbonImmutable::parse(
                         $date,
-                        'America/Lima'
+                        $timezone
                     )->endOfDay()->utc()
                 )
             );
+
+        $this->applyTimeFilters(
+            $query,
+            $filters,
+            $timezone
+        );
+        $filteredPaymentCount = (clone $query)->count();
+
+        $filteredPaymentTotal = (clone $query)->sum('amount');
+
+        $hasActiveFilters = collect($filters)
+            ->filter(
+                fn($value) =>
+                $value !== null &&
+                $value !== ''
+            )
+            ->isNotEmpty();
 
         $payments = $query
             ->paginate(30)
@@ -159,146 +179,149 @@ class PaymentController extends Controller
                 'filters',
                 'todayPaymentCount',
                 'todayPaymentTotal',
+                'filteredPaymentCount',
+                'filteredPaymentTotal',
+                'hasActiveFilters',
                 'latestPaymentPublicId'
             )
         );
     }
 
-public function liveStatus(): JsonResponse
-{
-    $business = auth()->user()->business;
+    public function liveStatus(): JsonResponse
+    {
+        $business = auth()->user()->business;
 
-    abort_unless($business, 403);
+        abort_unless($business, 403);
 
-    $latestPayment = Payment::query()
-        ->with('provider')
-        ->where('business_id', $business->id)
-        ->latest('occurred_at')
-        ->first();
+        $latestPayment = Payment::query()
+            ->with('provider')
+            ->where('business_id', $business->id)
+            ->latest('occurred_at')
+            ->first();
 
-    return response()->json([
-        'latest_payment_public_id' =>
-            $latestPayment?->public_id,
+        return response()->json([
+            'latest_payment_public_id' =>
+                $latestPayment?->public_id,
 
-        'latest_payment_at' =>
-            $latestPayment?->occurred_at?->toISOString(),
+            'latest_payment_at' =>
+                $latestPayment?->occurred_at?->toISOString(),
 
-        'latest_payment' => $latestPayment
-            ? [
-                'public_id' =>
-                    $latestPayment->public_id,
+            'latest_payment' => $latestPayment
+                ? [
+                    'public_id' =>
+                        $latestPayment->public_id,
 
-                'amount' =>
-                    number_format(
-                        (float) $latestPayment->amount,
-                        2,
-                        '.',
-                        ''
-                    ),
+                    'amount' =>
+                        number_format(
+                            (float) $latestPayment->amount,
+                            2,
+                            '.',
+                            ''
+                        ),
 
-                'provider' =>
-                    $latestPayment->provider?->name
-                    ?? 'Pago',
+                    'provider' =>
+                        $latestPayment->provider?->name
+                        ?? 'Pago',
 
-                'payer_name' =>
-                    $latestPayment->payer_name
-                    ?: 'Cliente no identificado',
+                    'payer_name' =>
+                        $latestPayment->payer_name
+                        ?: 'Cliente no identificado',
 
-                'status' =>
-                    $latestPayment->status,
+                    'status' =>
+                        $latestPayment->status,
 
-                'detail_url' =>
-                    route(
-                        'business.payments.show',
-                        $latestPayment
-                    ),
-            ]
-            : null,
+                    'detail_url' =>
+                        route(
+                            'business.payments.show',
+                            $latestPayment
+                        ),
+                ]
+                : null,
 
-        'checked_at' => now()->toISOString(),
-    ]);
-}
+            'checked_at' => now()->toISOString(),
+        ]);
+    }
     public function export(
-    PaymentIndexRequest $request
-): StreamedResponse {
-    $user = $request->user();
+        PaymentIndexRequest $request
+    ): StreamedResponse {
+        $user = $request->user();
 
-    abort_unless(
-        $user->isAdministrator(),
-        403
-    );
+        abort_unless(
+            $user->isAdministrator(),
+            403
+        );
 
-    $filters = $request->validated();
+        $filters = $request->validated();
 
-    $timezone = $user->business?->timezone
-        ?: 'America/Lima';
+        $timezone = $user->business?->timezone
+            ?: 'America/Lima';
 
-    $query = Payment::query()
-        ->where(
-            'business_id',
-            $user->business_id
-        )
-        ->with([
-            'provider:id,name',
-            'emitterDevice:id,name',
+        $query = Payment::query()
+            ->where(
+                'business_id',
+                $user->business_id
+            )
+            ->with([
+                'provider:id,name',
+                'emitterDevice:id,name',
 
-            'acknowledgements' => fn ($query) =>
-                $query
-                    ->whereNotNull('confirmed_at')
-                    ->oldest('confirmed_at'),
+                'acknowledgements' => fn($query) =>
+                    $query
+                        ->whereNotNull('confirmed_at')
+                        ->oldest('confirmed_at'),
 
-            'acknowledgements.user:id,name',
-            'acknowledgements.receiverDevice:id,name',
-        ])
-        ->when(
-            $filters['search'] ?? null,
-            fn ($query, $search) =>
+                'acknowledgements.user:id,name',
+                'acknowledgements.receiverDevice:id,name',
+            ])
+            ->when(
+                $filters['search'] ?? null,
+                fn($query, $search) =>
                 $query->where(
-                    fn ($query) =>
-                        $query
-                            ->where(
-                                'payer_name',
-                                'like',
-                                "%{$search}%"
-                            )
-                            ->orWhere(
-                                'external_reference',
-                                'like',
-                                "%{$search}%"
-                            )
-                )
-        )
-        ->when(
-            $filters['provider'] ?? null,
-            fn ($query, $provider) =>
-                $query->whereHas(
-                    'provider',
-                    fn ($query) =>
-                        $query->where(
-                            'code',
-                            $provider
+                    fn($query) =>
+                    $query
+                        ->where(
+                            'payer_name',
+                            'like',
+                            "%{$search}%"
+                        )
+                        ->orWhere(
+                            'external_reference',
+                            'like',
+                            "%{$search}%"
                         )
                 )
-        )
-        ->when(
-            $filters['status'] ?? null,
-            fn ($query, $status) =>
+            )
+            ->when(
+                $filters['provider'] ?? null,
+                fn($query, $provider) =>
+                $query->whereHas(
+                    'provider',
+                    fn($query) =>
+                    $query->where(
+                        'code',
+                        $provider
+                    )
+                )
+            )
+            ->when(
+                $filters['status'] ?? null,
+                fn($query, $status) =>
                 $query->where(
                     'status',
                     $status
                 )
-        )
-        ->when(
-            $filters['amount'] ?? null,
-            fn ($query, $amount) =>
+            )
+            ->when(
+                $filters['amount'] ?? null,
+                fn($query, $amount) =>
                 $query->where(
                     'amount',
                     $amount
                 )
-        )
-        ->when(
-            $filters['date_from'] ?? null,
-            fn ($query, $date) =>
+            )
+            ->when(
+                $filters['date_from'] ?? null,
+                fn($query, $date) =>
                 $query->where(
                     'occurred_at',
                     '>=',
@@ -309,10 +332,10 @@ public function liveStatus(): JsonResponse
                         ->startOfDay()
                         ->utc()
                 )
-        )
-        ->when(
-            $filters['date_to'] ?? null,
-            fn ($query, $date) =>
+            )
+            ->when(
+                $filters['date_to'] ?? null,
+                fn($query, $date) =>
                 $query->where(
                     'occurred_at',
                     '<=',
@@ -323,387 +346,431 @@ public function liveStatus(): JsonResponse
                         ->endOfDay()
                         ->utc()
                 )
-        )
-        ->orderBy('id');
+            );
 
-    $fileName = sprintf(
-        'pagos-%s-%s.csv',
-        $user->business?->public_id
-            ?? 'negocio',
-        now($timezone)->format('Y-m-d-His')
-    );
-
-    return response()->streamDownload(
-        function () use (
+        $this->applyTimeFilters(
             $query,
+            $filters,
             $timezone
-        ): void {
-            $output = fopen(
-                'php://output',
-                'wb'
-            );
+        );
 
-            /*
-             * BOM para que Excel reconozca correctamente
-             * tildes, eñes y caracteres UTF-8.
-             */
-            fwrite(
-                $output,
-                "\xEF\xBB\xBF"
-            );
+        $query->orderBy('id');
 
-            fputcsv(
-                $output,
-                [
-                    'Fecha',
-                    'Hora',
-                    'Cliente',
-                    'Medio',
-                    'Monto',
-                    'Moneda',
-                    'Estado',
-                    'Verificado por',
-                    'Dispositivo receptor',
-                    'Fecha de verificación',
-                    'Dispositivo emisor',
-                    'Referencia',
-                ],
-                ';'
-            );
+        $fileName = sprintf(
+            'pagos-%s-%s.csv',
+            $user->business?->public_id
+            ?? 'negocio',
+            now($timezone)->format('Y-m-d-His')
+        );
 
-            $query->chunkById(
-                500,
-                function ($payments) use (
+        return response()->streamDownload(
+            function () use ($query, $timezone): void {
+                $output = fopen(
+                    'php://output',
+                    'wb'
+                );
+
+                /*
+                 * BOM para que Excel reconozca correctamente
+                 * tildes, eñes y caracteres UTF-8.
+                 */
+                fwrite(
                     $output,
-                    $timezone
-                ): void {
-                    foreach (
-                        $payments as $payment
-                    ) {
-                        $confirmation =
-                            $payment
-                                ->acknowledgements
-                                ->first();
+                    "\xEF\xBB\xBF"
+                );
 
-                        $status = match (
-                            $payment->status
+                fputcsv(
+                    $output,
+                    [
+                        'Fecha',
+                        'Hora',
+                        'Cliente',
+                        'Medio',
+                        'Monto',
+                        'Moneda',
+                        'Estado',
+                        'Verificado por',
+                        'Dispositivo receptor',
+                        'Fecha de verificación',
+                        'Dispositivo emisor',
+                        'Referencia',
+                    ],
+                    ';'
+                );
+
+                $query->chunkById(
+                    500,
+                    function ($payments) use ($output, $timezone): void {
+                        foreach (
+                            $payments as $payment
                         ) {
-                            Payment::STATUS_CONFIRMED =>
+                            $confirmation =
+                                $payment
+                                    ->acknowledgements
+                                    ->first();
+
+                            $status = match (
+                            $payment->status
+                            ) {
+                                Payment::STATUS_CONFIRMED =>
                                 'Verificado',
 
-                            Payment::STATUS_IGNORED =>
+                                Payment::STATUS_IGNORED =>
                                 'Ignorado',
 
-                            default =>
+                                default =>
                                 'Recibido',
-                        };
+                            };
 
-                        fputcsv(
-                            $output,
-                            [
-                                $payment
-                                    ->occurred_at
-                                    ->timezone(
-                                        $timezone
-                                    )
-                                    ->format(
-                                        'd/m/Y'
-                                    ),
+                            fputcsv(
+                                $output,
+                                [
+                                    $payment
+                                        ->occurred_at
+                                        ->timezone(
+                                            $timezone
+                                        )
+                                        ->format(
+                                            'd/m/Y'
+                                        ),
 
-                                $payment
-                                    ->occurred_at
-                                    ->timezone(
-                                        $timezone
-                                    )
-                                    ->format(
-                                        'H:i:s'
-                                    ),
+                                    $payment
+                                        ->occurred_at
+                                        ->timezone(
+                                            $timezone
+                                        )
+                                        ->format(
+                                            'H:i:s'
+                                        ),
 
-                                $this
-                                    ->safeCsvValue(
-                                        $payment
-                                            ->payer_name
-                                        ?: 'No identificado'
-                                    ),
+                                    $this
+                                        ->safeCsvValue(
+                                            $payment
+                                                ->payer_name
+                                            ?: 'No identificado'
+                                        ),
 
-                                $payment
-                                    ->provider
-                                    ?->name
+                                    $payment
+                                        ->provider
+                                            ?->name
                                     ?? 'No identificado',
 
-                                number_format(
-                                    (float)
+                                    number_format(
+                                        (float) 
                                         $payment
                                             ->amount,
-                                    2,
-                                    '.',
-                                    ''
-                                ),
-
-                                $payment->currency,
-
-                                $status,
-
-                                $this
-                                    ->safeCsvValue(
-                                        $confirmation
-                                            ?->user
-                                            ?->name
-                                        ?? ''
+                                        2,
+                                        '.',
+                                        ''
                                     ),
 
-                                $this
-                                    ->safeCsvValue(
-                                        $confirmation
-                                            ?->receiverDevice
-                                            ?->name
-                                        ?? ''
-                                    ),
+                                    $payment->currency,
 
-                                $confirmation
-                                    ?->confirmed_at
-                                    ?->timezone(
-                                        $timezone
-                                    )
-                                    ->format(
-                                        'd/m/Y H:i:s'
-                                    )
+                                    $status,
+
+                                    $this
+                                        ->safeCsvValue(
+                                            $confirmation
+                                                ?->user
+                                                    ?->name
+                                            ?? ''
+                                        ),
+
+                                    $this
+                                        ->safeCsvValue(
+                                            $confirmation
+                                                ?->receiverDevice
+                                                    ?->name
+                                            ?? ''
+                                        ),
+
+                                    $confirmation
+                                        ?->confirmed_at
+                                            ?->timezone(
+                                            $timezone
+                                        )
+                                        ->format(
+                                            'd/m/Y H:i:s'
+                                        )
                                     ?? '',
 
-                                $this
-                                    ->safeCsvValue(
-                                        $payment
-                                            ->emitterDevice
-                                            ?->name
-                                        ?? ''
-                                    ),
+                                    $this
+                                        ->safeCsvValue(
+                                            $payment
+                                                ->emitterDevice
+                                                    ?->name
+                                            ?? ''
+                                        ),
 
-                                $this
-                                    ->safeCsvValue(
-                                        $payment
-                                            ->external_reference
-                                        ?? ''
-                                    ),
-                            ],
-                            ';'
-                        );
+                                    $this
+                                        ->safeCsvValue(
+                                            $payment
+                                                ->external_reference
+                                            ?? ''
+                                        ),
+                                ],
+                                ';'
+                            );
+                        }
                     }
-                }
-            );
+                );
 
-            fclose($output);
-        },
-        $fileName,
-        [
-            'Content-Type' =>
-                'text/csv; charset=UTF-8',
+                fclose($output);
+            },
+            $fileName,
+            [
+                'Content-Type' =>
+                    'text/csv; charset=UTF-8',
 
-            'Cache-Control' =>
-                'no-store, no-cache',
-        ]
-    );
-}
-
-   public function show(
-    Request $request,
-    Payment $payment
-): View {
-    $this->ensurePaymentBelongsToBusiness($payment);
-
-    $receiverDevice = $request->attributes->get(
-        'receiver_device'
-    );
-
-    abort_unless(
-        $receiverDevice instanceof Device,
-        403,
-        'El dispositivo receptor no está vinculado.'
-    );
-
-    /*
-     * Registramos la primera vez que este usuario
-     * visualizó el pago.
-     *
-     * Si ya confirmó anteriormente, no cambiamos el
-     * dispositivo desde el cual confirmó.
-     */
-    $acknowledgement =
-        PaymentAcknowledgement::query()
-            ->firstOrNew([
-                'payment_id' => $payment->id,
-                'user_id' => $request->user()->id,
-            ]);
-
-    $acknowledgement->viewed_at ??= now();
-
-    if ($acknowledgement->confirmed_at === null) {
-        $acknowledgement->receiver_device_id =
-            $receiverDevice->id;
+                'Cache-Control' =>
+                    'no-store, no-cache',
+            ]
+        );
     }
 
-    $acknowledgement->save();
+    public function show(
+        Request $request,
+        Payment $payment
+    ): View {
+        $this->ensurePaymentBelongsToBusiness($payment);
 
-    /*
-     * Cargamos las relaciones después de registrar
-     * la visualización para que aparezca inmediatamente.
-     */
-    $payment->load([
-        'provider',
-        'emitterDevice',
-        'acknowledgements' => fn ($query) =>
-            $query->orderByDesc('confirmed_at')
-                ->orderByDesc('viewed_at'),
-        'acknowledgements.user',
-        'acknowledgements.receiverDevice',
-    ]);
+        $receiverDevice = $request->attributes->get(
+            'receiver_device'
+        );
 
-    return view(
-        'business.payments.show',
-        compact('payment')
-    );
-}
+        abort_unless(
+            $receiverDevice instanceof Device,
+            403,
+            'El dispositivo receptor no está vinculado.'
+        );
 
-public function confirm(
-    Request $request,
-    Payment $payment
-): RedirectResponse {
-    $this->ensurePaymentBelongsToBusiness($payment);
+        /*
+         * Registramos la primera vez que este usuario
+         * visualizó el pago.
+         *
+         * Si ya confirmó anteriormente, no cambiamos el
+         * dispositivo desde el cual confirmó.
+         */
+        $acknowledgement =
+            PaymentAcknowledgement::query()
+                ->firstOrNew([
+                    'payment_id' => $payment->id,
+                    'user_id' => $request->user()->id,
+                ]);
 
-    $receiverDevice = $request->attributes->get(
-        'receiver_device'
-    );
+        $acknowledgement->viewed_at ??= now();
 
-    abort_unless(
-        $receiverDevice instanceof Device,
-        403,
-        'El dispositivo receptor no está vinculado.'
-    );
-
-    $result = DB::transaction(
-        function () use (
-            $request,
-            $payment,
-            $receiverDevice
-        ): array {
-            $lockedPayment = Payment::query()
-                ->whereKey($payment->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            /*
-             * Buscamos si otro trabajador ya confirmó
-             * este pago.
-             */
-            $existingConfirmation =
-                PaymentAcknowledgement::query()
-                    ->where(
-                        'payment_id',
-                        $lockedPayment->id
-                    )
-                    ->whereNotNull('confirmed_at')
-                    ->with('user:id,name')
-                    ->oldest('confirmed_at')
-                    ->first();
-
-            if ($existingConfirmation) {
-                return [
-                    'confirmed' => false,
-                    'user_name' =>
-                        $existingConfirmation
-                            ->user
-                            ?->name
-                        ?? 'otro usuario',
-                ];
-            }
-
-            $acknowledgement =
-                PaymentAcknowledgement::query()
-                    ->firstOrNew([
-                        'payment_id' =>
-                            $lockedPayment->id,
-
-                        'user_id' =>
-                            $request->user()->id,
-                    ]);
-
-            $acknowledgement->viewed_at ??= now();
-
-            $acknowledgement->confirmed_at = now();
-
+        if ($acknowledgement->confirmed_at === null) {
             $acknowledgement->receiver_device_id =
                 $receiverDevice->id;
-
-            $acknowledgement->save();
-
-            $lockedPayment->update([
-                'status' =>
-                    Payment::STATUS_CONFIRMED,
-            ]);
-
-            return [
-                'confirmed' => true,
-                'user_name' =>
-                    $request->user()->name,
-            ];
         }
-    );
 
-    if (! $result['confirmed']) {
+        $acknowledgement->save();
+
+        /*
+         * Cargamos las relaciones después de registrar
+         * la visualización para que aparezca inmediatamente.
+         */
+        $payment->load([
+            'provider',
+            'emitterDevice',
+            'acknowledgements' => fn($query) =>
+                $query->orderByDesc('confirmed_at')
+                    ->orderByDesc('viewed_at'),
+            'acknowledgements.user',
+            'acknowledgements.receiverDevice',
+        ]);
+
+        return view(
+            'business.payments.show',
+            compact('payment')
+        );
+    }
+
+    public function confirm(
+        Request $request,
+        Payment $payment
+    ): RedirectResponse {
+        $this->ensurePaymentBelongsToBusiness($payment);
+
+        $receiverDevice = $request->attributes->get(
+            'receiver_device'
+        );
+
+        abort_unless(
+            $receiverDevice instanceof Device,
+            403,
+            'El dispositivo receptor no está vinculado.'
+        );
+
+        $result = DB::transaction(
+            function () use ($request, $payment, $receiverDevice): array {
+                $lockedPayment = Payment::query()
+                    ->whereKey($payment->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                /*
+                 * Buscamos si otro trabajador ya confirmó
+                 * este pago.
+                 */
+                $existingConfirmation =
+                    PaymentAcknowledgement::query()
+                        ->where(
+                            'payment_id',
+                            $lockedPayment->id
+                        )
+                        ->whereNotNull('confirmed_at')
+                        ->with('user:id,name')
+                        ->oldest('confirmed_at')
+                        ->first();
+
+                if ($existingConfirmation) {
+                    return [
+                        'confirmed' => false,
+                        'user_name' =>
+                            $existingConfirmation
+                                ->user
+                                    ?->name
+                            ?? 'otro usuario',
+                    ];
+                }
+
+                $acknowledgement =
+                    PaymentAcknowledgement::query()
+                        ->firstOrNew([
+                            'payment_id' =>
+                                $lockedPayment->id,
+
+                            'user_id' =>
+                                $request->user()->id,
+                        ]);
+
+                $acknowledgement->viewed_at ??= now();
+
+                $acknowledgement->confirmed_at = now();
+
+                $acknowledgement->receiver_device_id =
+                    $receiverDevice->id;
+
+                $acknowledgement->save();
+
+                $lockedPayment->update([
+                    'status' =>
+                        Payment::STATUS_CONFIRMED,
+                ]);
+
+                return [
+                    'confirmed' => true,
+                    'user_name' =>
+                        $request->user()->name,
+                ];
+            }
+        );
+
+        if (!$result['confirmed']) {
+            return redirect()
+                ->route(
+                    'business.payments.show',
+                    $payment
+                )
+                ->with(
+                    'warning',
+                    "Este pago ya fue verificado por {$result['user_name']}."
+                );
+        }
+
         return redirect()
             ->route(
                 'business.payments.show',
                 $payment
             )
             ->with(
-                'warning',
-                "Este pago ya fue verificado por {$result['user_name']}."
+                'success',
+                'Pago marcado como verificado correctamente.'
             );
     }
 
-    return redirect()
-        ->route(
-            'business.payments.show',
-            $payment
-        )
-        ->with(
-            'success',
-            'Pago marcado como verificado correctamente.'
-        );
-}
-private function safeCsvValue(
-    ?string $value
-): string {
-    $value = trim(
-        (string) $value
-    );
+    private function applyTimeFilters(
+        Builder $query,
+        array $filters,
+        string $timezone
+    ): void {
+        $timeFrom = $filters['time_from'] ?? null;
+        $timeTo = $filters['time_to'] ?? null;
 
-    /*
-     * Evita que Excel interprete datos proporcionados
-     * externamente como fórmulas.
-     */
-    if (
-        $value !== '' &&
-        in_array(
-            $value[0],
-            ['=', '+', '-', '@'],
-            true
-        )
-    ) {
-        return "'".$value;
+        if (!$timeFrom && !$timeTo) {
+            return;
+        }
+
+        /*
+         * occurred_at está guardado en UTC. Antes de comparar
+         * la hora, lo convertimos a la zona horaria del negocio.
+         *
+         * Se usa el desplazamiento numérico para no depender
+         * de las tablas de zonas horarias de MySQL/MariaDB.
+         */
+        $timezoneOffset = CarbonImmutable::now(
+            $timezone
+        )->format('P');
+
+        if ($timeFrom) {
+            $query->whereRaw(
+                'TIME(CONVERT_TZ(occurred_at, ?, ?)) >= ?',
+                [
+                    '+00:00',
+                    $timezoneOffset,
+                    $timeFrom . ':00',
+                ]
+            );
+        }
+
+        if ($timeTo) {
+            $query->whereRaw(
+                'TIME(CONVERT_TZ(occurred_at, ?, ?)) <= ?',
+                [
+                    '+00:00',
+                    $timezoneOffset,
+                    $timeTo . ':59',
+                ]
+            );
+        }
     }
 
-    return $value;
-}
- 
+    private function safeCsvValue(
+        ?string $value
+    ): string {
+        $value = trim(
+            (string) $value
+        );
+
+        /*
+         * Evita que Excel interprete datos proporcionados
+         * externamente como fórmulas.
+         */
+        if (
+            $value !== '' &&
+            in_array(
+                $value[0],
+                ['=', '+', '-', '@'],
+                true
+            )
+        ) {
+            return "'" . $value;
+        }
+
+        return $value;
+    }
+
 
     private function ensurePaymentBelongsToBusiness(
         Payment $payment
     ): void {
         abort_unless(
             $payment->business_id ===
-                auth()->user()->business_id,
+            auth()->user()->business_id,
             404
         );
     }
-    
+
 }

@@ -36,12 +36,31 @@ class PaymentIndexRequest extends FormRequest
                 'date_format:Y-m-d',
                 'after_or_equal:date_from',
             ],
+            'time_from' => [
+                'nullable',
+                'date_format:H:i',
+            ],
+            'time_to' => [
+                'nullable',
+                'date_format:H:i',
+                'after_or_equal:time_from',
+            ],
             'amount' => [
                 'nullable',
                 'numeric',
                 'decimal:0,2',
                 'gt:0',
             ],
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'date_from' => 'fecha desde',
+            'date_to' => 'fecha hasta',
+            'time_from' => 'hora desde',
+            'time_to' => 'hora hasta',
         ];
     }
 }

@@ -115,21 +115,91 @@
 
     .filters {
         display: grid;
-        grid-template-columns:
-            2fr repeat(4, 1fr) auto;
-        gap: 12px;
+        gap: 18px;
         padding: 20px;
         margin-bottom: 22px;
     }
 
+    .filters-primary {
+        display: grid;
+        grid-template-columns: minmax(260px, 2fr) 1fr 1fr;
+        gap: 12px;
+    }
+
+    .filters-period {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(145px, 1fr)) auto;
+        align-items: end;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+    }
+
+    .filter-field {
+        display: grid;
+        min-width: 0;
+        gap: 7px;
+    }
+
+    .filter-field label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
     .filters input,
     .filters select {
+        width: 100%;
         min-width: 0;
-        padding: 11px;
+        min-height: 46px;
+        box-sizing: border-box;
+        padding: 11px 12px;
         border: 1px solid var(--border);
-        border-radius: 9px;
+        border-radius: 10px;
         background: white;
         font: inherit;
+    }
+
+    .filters input:focus,
+    .filters select:focus {
+        outline: 3px solid rgba(8, 145, 178, .12);
+        border-color: #0891b2;
+    }
+
+    .filter-actions {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+    }
+
+    .filter-actions .button,
+    .filter-clear {
+        min-height: 46px;
+        white-space: nowrap;
+    }
+
+    .filter-clear {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 14px;
+        color: var(--primary-dark);
+        text-decoration: none;
+        background: #f2f6fa;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .filter-clear:hover {
+        background: #e7eef5;
+    }
+
+    .filter-clear-hours {
+        color: #92400e;
+        background: #fff8e8;
+        border-color: #f2d7a5;
     }
 
     .table-scroll {
@@ -247,8 +317,20 @@
     }
 
     @media (max-width: 1000px) {
-        .filters {
+        .filters-primary {
             grid-template-columns: 1fr 1fr;
+        }
+
+        .filters-primary .filter-search {
+            grid-column: 1 / -1;
+        }
+
+        .filters-period {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .filter-actions {
+            grid-column: 1 / -1;
         }
     }
 @media (max-width: 680px) {
@@ -268,9 +350,29 @@
         text-align: center;
     }
 
-    .payment-summary,
-    .filters {
+    .payment-summary {
         grid-template-columns: 1fr;
+    }
+
+    .filters-primary,
+    .filters-period {
+        grid-template-columns: 1fr;
+    }
+
+    .filters-primary .filter-search,
+    .filter-actions {
+        grid-column: auto;
+    }
+
+    .filter-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .filter-actions .button,
+    .filter-clear {
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .summary-card strong {
@@ -538,19 +640,32 @@
     class="payment-summary"
 >
     <article class="panel summary-card">
-        <span>Pagos recibidos hoy</span>
+        <span>
+            {{ $hasActiveFilters
+                ? 'Pagos encontrados'
+                : 'Pagos recibidos hoy' }}
+        </span>
 
         <strong>
-            {{ $todayPaymentCount }}
+            {{ $hasActiveFilters
+                ? $filteredPaymentCount
+                : $todayPaymentCount }}
         </strong>
     </article>
 
     <article class="panel summary-card">
-        <span>Total recibido hoy</span>
+        <span>
+            {{ $hasActiveFilters
+                ? 'Total filtrado'
+                : 'Total recibido hoy' }}
+        </span>
 
         <strong>
-            S/ {{ number_format(
-                $todayPaymentTotal,
+            S/
+            {{ number_format(
+                $hasActiveFilters
+                    ? $filteredPaymentTotal
+                    : $todayPaymentTotal,
                 2
             ) }}
         </strong>
@@ -564,86 +679,176 @@
         'business.payments.index'
     ) }}"
 >
-    <input
-        name="search"
-        type="search"
-        placeholder="Buscar cliente o referencia"
-        value="{{ $filters['search'] ?? '' }}"
-        aria-label="Buscar cliente o referencia"
-    >
+    <div class="filters-primary">
+        <div class="filter-field filter-search">
+            <label for="filter-search">
+                Cliente o referencia
+            </label>
 
-    <select
-        name="provider"
-        aria-label="Medio de pago"
-    >
-        <option value="">
-            Todos los medios
-        </option>
-
-        @foreach ($providers as $provider)
-            <option
-                value="{{ $provider->code }}"
-                @selected(
-                    ($filters['provider'] ?? '') ===
-                    $provider->code
-                )
+            <input
+                id="filter-search"
+                name="search"
+                type="search"
+                placeholder="Buscar cliente o referencia"
+                value="{{ $filters['search'] ?? '' }}"
             >
-                {{ $provider->name }}
-            </option>
-        @endforeach
-    </select>
+        </div>
 
-    <select
-        name="status"
-        aria-label="Estado del pago"
-    >
-        <option value="">
-            Todos los estados
-        </option>
+        <div class="filter-field">
+            <label for="filter-provider">
+                Medio de pago
+            </label>
 
-        <option
-            value="received"
-            @selected(
-                ($filters['status'] ?? '') ===
-                'received'
+            <select
+                id="filter-provider"
+                name="provider"
+            >
+                <option value="">
+                    Todos los medios
+                </option>
+
+                @foreach ($providers as $provider)
+                    <option
+                        value="{{ $provider->code }}"
+                        @selected(
+                            ($filters['provider'] ?? '') ===
+                            $provider->code
+                        )
+                    >
+                        {{ $provider->name }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
+
+        <div class="filter-field">
+            <label for="filter-status">
+                Estado
+            </label>
+
+            <select
+                id="filter-status"
+                name="status"
+            >
+                <option value="">
+                    Todos los estados
+                </option>
+
+                <option
+                    value="received"
+                    @selected(
+                        ($filters['status'] ?? '') ===
+                        'received'
+                    )
+                >
+                    Recibido
+                </option>
+
+                <option
+                    value="confirmed"
+                    @selected(
+                        ($filters['status'] ?? '') ===
+                        'confirmed'
+                    )
+                >
+                    Verificado
+                </option>
+            </select>
+        </div>
+    </div>
+
+    <div class="filters-period">
+        <div class="filter-field">
+            <label for="filter-date-from">
+                Fecha desde
+            </label>
+
+            <input
+                id="filter-date-from"
+                name="date_from"
+                type="date"
+                value="{{ $filters['date_from'] ?? '' }}"
+            >
+        </div>
+
+        <div class="filter-field">
+            <label for="filter-date-to">
+                Fecha hasta
+            </label>
+
+            <input
+                id="filter-date-to"
+                name="date_to"
+                type="date"
+                value="{{ $filters['date_to'] ?? '' }}"
+            >
+        </div>
+
+        <div class="filter-field">
+            <label for="filter-time-from">
+                Hora desde
+            </label>
+
+            <input
+                id="filter-time-from"
+                name="time_from"
+                type="time"
+                value="{{ $filters['time_from'] ?? '' }}"
+            >
+        </div>
+
+        <div class="filter-field">
+            <label for="filter-time-to">
+                Hora hasta
+            </label>
+
+            <input
+                id="filter-time-to"
+                name="time_to"
+                type="time"
+                value="{{ $filters['time_to'] ?? '' }}"
+            >
+        </div>
+
+        <div class="filter-actions">
+            <button
+                class="button"
+                type="submit"
+            >
+                Buscar
+            </button>
+
+            @if (
+                filled($filters['time_from'] ?? null) ||
+                filled($filters['time_to'] ?? null)
             )
-        >
-            Recibido
-        </option>
+                <a
+                    class="filter-clear filter-clear-hours"
+                    href="{{ route(
+                        'business.payments.index',
+                        request()->except([
+                            'time_from',
+                            'time_to',
+                            'page',
+                        ])
+                    ) }}"
+                >
+                    Quitar horas
+                </a>
+            @endif
 
-        <option
-            value="confirmed"
-            @selected(
-                ($filters['status'] ?? '') ===
-                'confirmed'
-            )
-        >
-            Verificado
-        </option>
-    </select>
-
-    <input
-        name="date_from"
-        type="date"
-        value="{{ $filters['date_from'] ?? '' }}"
-        title="Fecha desde"
-        aria-label="Fecha desde"
-    >
-
-    <input
-        name="date_to"
-        type="date"
-        value="{{ $filters['date_to'] ?? '' }}"
-        title="Fecha hasta"
-        aria-label="Fecha hasta"
-    >
-
-    <button
-        class="button"
-        type="submit"
-    >
-        Buscar
-    </button>
+            @if (request()->query())
+                <a
+                    class="filter-clear"
+                    href="{{ route(
+                        'business.payments.index'
+                    ) }}"
+                >
+                    Limpiar todo
+                </a>
+            @endif
+        </div>
+    </div>
 </form>
 
 <section
