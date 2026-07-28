@@ -30,12 +30,7 @@ class ReceiverLinkController extends Controller
             random_bytes(32)
         );
 
-        DB::transaction(function () use (
-            $request,
-            $validated,
-            $user,
-            $plainToken
-        ): void {
+        DB::transaction(function () use ($request, $validated, $user, $plainToken): void {
             $pairingCode = PairingCode::query()
                 ->where(
                     'code_hash',
@@ -48,7 +43,7 @@ class ReceiverLinkController extends Controller
 
             if (
                 $pairingCode === null
-                || ! $pairingCode->isUsable()
+                || !$pairingCode->isUsable()
             ) {
                 throw ValidationException::withMessages([
                     'code' =>
@@ -120,16 +115,7 @@ class ReceiverLinkController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (
-                $device !== null
-                && $device->status ===
-                    Device::STATUS_REVOKED
-            ) {
-                throw ValidationException::withMessages([
-                    'code' =>
-                        'Este navegador fue revocado. El administrador debe autorizarlo nuevamente.',
-                ]);
-            }
+
 
             if ($device === null) {
                 $receiverLimit = $subscription->limit(
@@ -184,6 +170,9 @@ class ReceiverLinkController extends Controller
                 'name' =>
                     $validated['device_name'],
 
+                'authorized_by' =>
+                    $pairingCode->created_by,
+
                 'status' =>
                     Device::STATUS_ACTIVE,
 
@@ -205,13 +194,15 @@ class ReceiverLinkController extends Controller
                 ],
 
                 'authorized_at' =>
-                    $device->authorized_at
-                    ?? now(),
+                    now(),
 
                 'last_seen_at' =>
                     now(),
 
                 'disabled_at' =>
+                    null,
+
+                'revoked_at' =>
                     null,
             ]);
 
