@@ -1033,20 +1033,28 @@ async function registerPushSubscription() {
         !('PushManager' in window) ||
         !('Notification' in window)
     ) {
-        console.warn('Este navegador no soporta Web Push');
+        console.warn(
+            'Este navegador no soporta Web Push'
+        );
+
         return false;
     }
 
     if (Notification.permission !== 'granted') {
-        console.warn('El permiso de notificaciones no fue concedido');
+        console.warn(
+            'El permiso de notificaciones no fue concedido'
+        );
+
         return false;
     }
 
     try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration =
+            await navigator.serviceWorker.ready;
 
         let subscription =
-            await registration.pushManager.getSubscription();
+            await registration.pushManager
+                .getSubscription();
 
         if (!subscription) {
             const keyResponse = await fetch(
@@ -1068,7 +1076,8 @@ async function registerPushSubscription() {
                 );
             }
 
-            const keyData = await keyResponse.json();
+            const keyData =
+                await keyResponse.json();
 
             const publicKey = String(
                 keyData.publicKey || ''
@@ -1088,7 +1097,19 @@ async function registerPushSubscription() {
                 applicationServerKey.length
             );
 
-            if (applicationServerKey.length !== 65) {
+            console.log(
+                'Service Worker:',
+                registration
+            );
+
+            console.log(
+                'ApplicationServerKey:',
+                applicationServerKey
+            );
+
+            if (
+                applicationServerKey.length !== 65
+            ) {
                 throw new Error(
                     'La clave pública VAPID no es válida. ' +
                     'Longitud decodificada: ' +
@@ -1096,17 +1117,6 @@ async function registerPushSubscription() {
                 );
             }
 
-            console.log('Registration:', registration);
-
-console.log(
-    'ApplicationServerKey:',
-    applicationServerKey
-);
-
-console.log(
-    'Key length:',
-    applicationServerKey.byteLength
-);
             subscription =
                 await registration.pushManager.subscribe({
                     userVisibleOnly: true,
@@ -1115,16 +1125,20 @@ console.log(
                 });
         }
 
-        const subscriptionJson = subscription.toJSON();
+        const subscriptionJson =
+            subscription.toJSON();
 
         const response = await fetch(
             @json(route('push.subscriptions.store')),
             {
                 method: 'POST',
-
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    'Content-Type':
+                        'application/json',
+
+                    'Accept':
+                        'application/json',
+
                     'X-CSRF-TOKEN':
                         document.querySelector(
                             'meta[name="csrf-token"]'
@@ -1134,14 +1148,18 @@ console.log(
                 credentials: 'same-origin',
 
                 body: JSON.stringify({
-                    endpoint: subscriptionJson.endpoint,
-                    keys: subscriptionJson.keys
+                    endpoint:
+                        subscriptionJson.endpoint,
+
+                    keys:
+                        subscriptionJson.keys
                 })
             }
         );
 
         if (!response.ok) {
-            const errorText = await response.text();
+            const errorText =
+                await response.text();
 
             throw new Error(
                 'No se pudo guardar la suscripción. HTTP ' +
@@ -1158,17 +1176,30 @@ console.log(
 
         return true;
     } catch (error) {
-    console.error('ERROR COMPLETO:', error);
+        console.error(
+            'ERROR COMPLETO:',
+            error
+        );
 
-    console.error('Nombre:', error.name);
+        console.error(
+            'Nombre:',
+            error.name
+        );
 
-    console.error('Mensaje:', error.message);
+        console.error(
+            'Mensaje:',
+            error.message
+        );
 
-    console.error('Stack:', error.stack);
+        console.error(
+            'Stack:',
+            error.stack
+        );
 
-    return false;
-}
+        return false;
     }
+}
+
 }
 
     let alertsEnabled =
