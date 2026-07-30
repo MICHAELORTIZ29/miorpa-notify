@@ -1096,6 +1096,17 @@ async function registerPushSubscription() {
                 );
             }
 
+            console.log('Registration:', registration);
+
+console.log(
+    'ApplicationServerKey:',
+    applicationServerKey
+);
+
+console.log(
+    'Key length:',
+    applicationServerKey.byteLength
+);
             subscription =
                 await registration.pushManager.subscribe({
                     userVisibleOnly: true,
@@ -1147,12 +1158,16 @@ async function registerPushSubscription() {
 
         return true;
     } catch (error) {
-        console.error(
-            'Error registrando Web Push:',
-            error
-        );
+    console.error('ERROR COMPLETO:', error);
 
-        return false;
+    console.error('Nombre:', error.name);
+
+    console.error('Mensaje:', error.message);
+
+    console.error('Stack:', error.stack);
+
+    return false;
+}
     }
 }
 
