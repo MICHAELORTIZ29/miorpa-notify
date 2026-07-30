@@ -1200,7 +1200,7 @@ async function registerPushSubscription() {
     }
 }
 
-}
+
 
     let alertsEnabled =
         localStorage.getItem('miorpa_alerts_enabled') !== '0';
