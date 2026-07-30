@@ -1353,7 +1353,7 @@ async function registerPushSubscription() {
         playNote(1174, 0.36, 0.34, 0.24);
     }
 
-  async function toggleAlerts() {
+async function toggleAlerts() {
     alertsEnabled = !alertsEnabled;
 
     localStorage.setItem(
@@ -1361,26 +1361,40 @@ async function registerPushSubscription() {
         alertsEnabled ? '1' : '0'
     );
 
-    if (alertsEnabled) {
-        await prepareAudio();
-
-        if (
-            'Notification' in window &&
-            Notification.permission === 'default'
-        ) {
-            await Notification.requestPermission();
-        }
-
-        if (
-            'Notification' in window &&
-            Notification.permission === 'granted'
-        ) {
-            await registerPushSubscription();
-        }
-
-        playPaymentSound();
+    if (!alertsEnabled) {
+        updateNotificationButton();
+        return;
     }
 
+    await prepareAudio();
+
+    if (
+        'Notification' in window &&
+        Notification.permission === 'default'
+    ) {
+        await Notification.requestPermission();
+    }
+
+    /*
+     * Intentamos registrar Web Push, pero si falla,
+     * no desactivamos el sonido ni los avisos de la web.
+     */
+    if (
+        'Notification' in window &&
+        Notification.permission === 'granted'
+    ) {
+        const pushRegistered =
+            await registerPushSubscription();
+
+        if (!pushRegistered) {
+            console.warn(
+                'Web Push no pudo registrarse. ' +
+                'Los avisos con la página abierta seguirán activos.'
+            );
+        }
+    }
+
+    playPaymentSound();
     updateNotificationButton();
 }
 
