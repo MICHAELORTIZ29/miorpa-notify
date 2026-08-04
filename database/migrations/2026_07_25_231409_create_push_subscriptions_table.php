@@ -15,7 +15,7 @@ return new class extends Migration
                 ->constrained()
                 ->cascadeOnDelete();
 
-            $table->string('endpoint', 2048)->unique();
+            $table->string('endpoint', 512)->unique();
 
             $table->text('public_key')->nullable();
 
