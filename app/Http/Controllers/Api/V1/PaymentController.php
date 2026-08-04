@@ -143,29 +143,60 @@ class PaymentController extends Controller
         ]);
 
         /*
+         * Variables de diagnóstico temporal.
+         *
+         * Nos permitirán saber si el envío Web Push
+         * fue ejecutado correctamente cuando la APK
+         * registre un pago nuevo.
+         */
+        $webPushResult = null;
+        $webPushError = null;
+
+        /*
          * Solo enviamos Web Push si el pago realmente
-         * acaba de crearse. Los duplicados no generan
-         * una segunda notificación.
+         * acaba de crearse.
+         *
+         * Si la APK vuelve a mandar el mismo evento,
+         * Laravel lo considera duplicado y no envía
+         * otra notificación.
          */
         if ($payment->wasRecentlyCreated) {
             try {
-                $payment->load('provider');
+                $payment->loadMissing('provider');
 
-                $webPushService
-                    ->sendPaymentNotification($payment);
+                $webPushResult =
+                    $webPushService
+                        ->sendPaymentNotification(
+                            $payment
+                        );
             } catch (\Throwable $exception) {
                 /*
-                 * Si Web Push falla, el pago no se pierde.
-                 * El error queda registrado para revisión.
+                 * Aunque falle Web Push, el pago permanece
+                 * guardado correctamente.
                  */
+                $webPushError =
+                    $exception->getMessage();
+
                 Log::error(
                     'No se pudo enviar Web Push del pago.',
                     [
                         'payment_id' =>
                             $payment->public_id,
 
+                        'business_id' =>
+                            $payment->business_id,
+
+                        'exception' =>
+                            get_class($exception),
+
                         'error' =>
                             $exception->getMessage(),
+
+                        'file' =>
+                            $exception->getFile(),
+
+                        'line' =>
+                            $exception->getLine(),
                     ]
                 );
             }
@@ -195,6 +226,18 @@ class PaymentController extends Controller
                 'received_at' =>
                     $payment->received_at
                         ->toIso8601String(),
+
+                /*
+                 * Diagnóstico temporal del Web Push.
+                 *
+                 * Una vez comprobemos que el envío automático
+                 * funciona, estos dos campos pueden eliminarse.
+                 */
+                'web_push' =>
+                    $webPushResult,
+
+                'web_push_error' =>
+                    $webPushError,
             ],
         ], $statusCode);
     }
