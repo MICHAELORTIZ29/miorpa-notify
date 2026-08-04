@@ -157,10 +157,10 @@ Route::prefix('business')
         )->name('dashboard');
 
         /*
-        |--------------------------------------------------------------------------
-        | Usuarios y cajeros
-        |--------------------------------------------------------------------------
-        */
+|--------------------------------------------------------------------------
+| Usuarios y cajeros
+|--------------------------------------------------------------------------
+*/
 
         Route::patch(
             '/users/{user}/deactivate',
@@ -172,17 +172,20 @@ Route::prefix('business')
             [BusinessUserController::class, 'activate']
         )->name('users.activate');
 
+        Route::post(
+            '/users',
+            [BusinessUserController::class, 'store']
+        )->name('users.store');
+
         Route::resource(
             'users',
             BusinessUserController::class
         )->only([
                     'index',
                     'create',
-                    'store',
                     'edit',
                     'update',
                 ]);
-
         /*
         |--------------------------------------------------------------------------
         | Dispositivos
