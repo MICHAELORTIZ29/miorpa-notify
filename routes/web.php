@@ -334,4 +334,11 @@ Route::middleware([
                 'destroy',
             ]
         )->name('subscriptions.destroy');
+        Route::post(
+            '/test',
+            [
+                PushSubscriptionController::class,
+                'test',
+            ]
+        )->name('test');
     });
