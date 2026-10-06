@@ -49,6 +49,10 @@
         margin-bottom: 24px;
     }
 
+    .payment-summary.payment-summary-single {
+        grid-template-columns: 1fr;
+    }
+
     .summary-card {
         padding: 22px;
     }
@@ -637,7 +641,7 @@
 
 <section
     id="payment-summary"
-    class="payment-summary"
+    class="payment-summary {{ $canViewPaymentTotals ? '' : 'payment-summary-single' }}"
 >
     <article class="panel summary-card">
         <span>
@@ -653,23 +657,25 @@
         </strong>
     </article>
 
-    <article class="panel summary-card">
-        <span>
-            {{ $hasActiveFilters
-                ? 'Total filtrado'
-                : 'Total recibido hoy' }}
-        </span>
+    @if ($canViewPaymentTotals)
+        <article class="panel summary-card">
+            <span>
+                {{ $hasActiveFilters
+                    ? 'Total filtrado'
+                    : 'Total recibido hoy' }}
+            </span>
 
-        <strong>
-            S/
-            {{ number_format(
-                $hasActiveFilters
-                    ? $filteredPaymentTotal
-                    : $todayPaymentTotal,
-                2
-            ) }}
-        </strong>
-    </article>
+            <strong>
+                S/
+                {{ number_format(
+                    $hasActiveFilters
+                        ? $filteredPaymentTotal
+                        : $todayPaymentTotal,
+                    2
+                ) }}
+            </strong>
+        </article>
+    @endif
 </section>
 
 <form

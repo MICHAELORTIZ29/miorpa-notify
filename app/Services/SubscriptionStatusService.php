@@ -11,9 +11,7 @@ class SubscriptionStatusService
     public function synchronize(
         Subscription $subscription
     ): string {
-        $subscription->loadMissing(
-            'business'
-        );
+        $subscription->loadMissing('business');
 
         $business = $subscription->business;
 
@@ -28,8 +26,7 @@ class SubscriptionStatusService
 
         $graceEnd =
             $subscription->grace_ends_at
-            ?? $subscription
-                ->current_period_ends_at;
+            ?? $subscription->current_period_ends_at;
 
         if (
             $subscription->auto_suspend &&
@@ -45,8 +42,7 @@ class SubscriptionStatusService
                 Business::SUSPENSION_NONPAYMENT;
         } elseif (
             $now->greaterThan(
-                $subscription
-                    ->current_period_ends_at
+                $subscription->current_period_ends_at
             )
         ) {
             $subscriptionStatus =
@@ -73,11 +69,29 @@ class SubscriptionStatusService
         }
 
         /*
-         * Una suspensión manual nunca debe ser eliminada
-         * automáticamente por el cron.
-         *
-         * También consideramos manuales las suspensiones
-         * antiguas que todavía no tengan motivo registrado.
+         * Si el superadministrador reactivó manualmente un negocio cuyo
+         * periodo de gracia ya terminó, mantenemos el estado financiero de
+         * la suscripción como suspendido, pero permitimos que el negocio siga
+         * operando. Así el cron no vuelve a bloquearlo en la siguiente petición.
+         */
+        $manualAccessOverride =
+            (bool) $business->manual_access_override;
+
+        if (
+            $manualAccessOverride &&
+            $subscriptionStatus ===
+                Subscription::STATUS_SUSPENDED
+        ) {
+            $automaticBusinessStatus =
+                Business::STATUS_OVERDUE;
+
+            $automaticSuspensionReason = null;
+        }
+
+        /*
+         * Una suspensión manual nunca debe ser eliminada automáticamente.
+         * También consideramos manuales las suspensiones antiguas que todavía
+         * no tengan motivo registrado.
          */
         $isManuallySuspended =
             $business->status ===
@@ -93,7 +107,8 @@ class SubscriptionStatusService
                 $subscriptionStatus,
                 $automaticBusinessStatus,
                 $automaticSuspensionReason,
-                $isManuallySuspended
+                $isManuallySuspended,
+                $manualAccessOverride
             ): void {
                 $subscriptionChanges = [];
 
@@ -110,26 +125,18 @@ class SubscriptionStatusService
                     Subscription::STATUS_SUSPENDED
                 ) {
                     if (
-                        $subscription->suspended_at ===
-                        null
+                        $subscription->suspended_at === null
                     ) {
-                        $subscriptionChanges[
-                            'suspended_at'
-                        ] = now();
+                        $subscriptionChanges['suspended_at'] = now();
                     }
                 } elseif (
-                    $subscription->suspended_at !==
-                    null
+                    $subscription->suspended_at !== null
                 ) {
-                    $subscriptionChanges[
-                        'suspended_at'
-                    ] = null;
+                    $subscriptionChanges['suspended_at'] = null;
                 }
 
                 if ($subscriptionChanges !== []) {
-                    $subscription->update(
-                        $subscriptionChanges
-                    );
+                    $subscription->update($subscriptionChanges);
                 }
 
                 if (
@@ -139,10 +146,6 @@ class SubscriptionStatusService
                     return;
                 }
 
-                /*
-                 * Conservamos la suspensión realizada
-                 * manualmente por el superadministrador.
-                 */
                 if ($isManuallySuspended) {
                     return;
                 }
@@ -161,35 +164,36 @@ class SubscriptionStatusService
                     $business->suspension_reason !==
                     $automaticSuspensionReason
                 ) {
-                    $businessChanges[
-                        'suspension_reason'
-                    ] = $automaticSuspensionReason;
+                    $businessChanges['suspension_reason'] =
+                        $automaticSuspensionReason;
                 }
 
                 if (
                     $automaticBusinessStatus ===
                     Business::STATUS_SUSPENDED
                 ) {
-                    if (
-                        $business->suspended_at ===
-                        null
-                    ) {
-                        $businessChanges[
-                            'suspended_at'
-                        ] = now();
+                    if ($business->suspended_at === null) {
+                        $businessChanges['suspended_at'] = now();
                     }
-                } elseif (
-                    $business->suspended_at !== null
+                } elseif ($business->suspended_at !== null) {
+                    $businessChanges['suspended_at'] = null;
+                }
+
+                /*
+                 * Cuando la suscripción vuelve a estar dentro de un estado
+                 * operativo (por renovación/cambio de fechas), el permiso
+                 * excepcional ya no es necesario y se limpia solo.
+                 */
+                if (
+                    $manualAccessOverride &&
+                    $subscriptionStatus !==
+                        Subscription::STATUS_SUSPENDED
                 ) {
-                    $businessChanges[
-                        'suspended_at'
-                    ] = null;
+                    $businessChanges['manual_access_override'] = false;
                 }
 
                 if ($businessChanges !== []) {
-                    $business->update(
-                        $businessChanges
-                    );
+                    $business->update($businessChanges);
                 }
             }
         );

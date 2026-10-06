@@ -26,6 +26,9 @@ class PaymentController extends Controller
         $timezone = $user->business?->timezone
             ?: 'America/Lima';
 
+        // Los cajeros pueden ver cada pago, pero no totales acumulados.
+        $canViewPaymentTotals = $user->isAdministrator();
+
         $query = Payment::query()
             ->where('business_id', $user->business_id)
             ->with([
@@ -119,7 +122,9 @@ class PaymentController extends Controller
         );
         $filteredPaymentCount = (clone $query)->count();
 
-        $filteredPaymentTotal = (clone $query)->sum('amount');
+        $filteredPaymentTotal = $canViewPaymentTotals
+            ? (clone $query)->sum('amount')
+            : null;
 
         $hasActiveFilters = collect($filters)
             ->filter(
@@ -153,7 +158,9 @@ class PaymentController extends Controller
 
         $todayPaymentCount = (clone $todayQuery)->count();
 
-        $todayPaymentTotal = (clone $todayQuery)->sum('amount');
+        $todayPaymentTotal = $canViewPaymentTotals
+            ? (clone $todayQuery)->sum('amount')
+            : null;
 
         $providers = PaymentProvider::query()
             ->where(
@@ -182,7 +189,8 @@ class PaymentController extends Controller
                 'filteredPaymentCount',
                 'filteredPaymentTotal',
                 'hasActiveFilters',
-                'latestPaymentPublicId'
+                'latestPaymentPublicId',
+                'canViewPaymentTotals'
             )
         );
     }

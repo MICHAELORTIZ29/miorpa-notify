@@ -19,7 +19,7 @@ class Business extends Model
     public const STATUS_SUSPENDED = 'suspended';
     public const STATUS_CLOSED = 'closed';
     public const SUSPENSION_MANUAL = 'manual';
-public const SUSPENSION_NONPAYMENT = 'nonpayment';
+    public const SUSPENSION_NONPAYMENT = 'nonpayment';
 
     protected $fillable = [
         'name',
@@ -33,6 +33,7 @@ public const SUSPENSION_NONPAYMENT = 'nonpayment';
         'suspended_at',
         'closed_at',
         'suspension_reason',
+        'manual_access_override',
     ];
 
     protected function casts(): array
@@ -40,6 +41,7 @@ public const SUSPENSION_NONPAYMENT = 'nonpayment';
         return [
             'suspended_at' => 'datetime',
             'closed_at' => 'datetime',
+            'manual_access_override' => 'boolean',
         ];
     }
 

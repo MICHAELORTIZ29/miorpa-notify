@@ -523,20 +523,30 @@
         @endif
 
         @php
-            $subscriptionWarning = auth()
-                ->user()
-                ->business
-                ?->currentSubscription
+            $currentBusiness = auth()->user()->business;
+            $manualAccessOverride = (bool) (
+                $currentBusiness?->manual_access_override
+            );
+
+            $subscriptionWarning = $manualAccessOverride
+                ? null
+                : $currentBusiness
+                    ?->currentSubscription
                     ?->warning();
         @endphp
 
-        @if ($subscriptionWarning)
+        @if ($manualAccessOverride)
+            <div class="alert alert-warning">
+                El plan se encuentra vencido, pero MIORPA ha habilitado
+                manualmente el acceso a esta cuenta.
+            </div>
+        @elseif ($subscriptionWarning)
             <div class="alert {{
                 $subscriptionWarning['level']
                 === 'danger'
                 ? 'alert-danger'
                 : 'alert-warning'
-                                                                                    }}">
+            }}">
                 {{ $subscriptionWarning['message'] }}
             </div>
         @endif

@@ -446,43 +446,84 @@ public function index(Request $request): View
 
     public function suspend(Business $business): RedirectResponse
     {
-        if ($business->status === Business::STATUS_SUSPENDED) {
-            return back()->with('info', 'El negocio ya se encuentra suspendido.');
+        if (
+            $business->status === Business::STATUS_SUSPENDED
+            && ! $business->manual_access_override
+        ) {
+            return back()->with(
+                'info',
+                'El negocio ya se encuentra suspendido.'
+            );
         }
 
         $business->update([
-    'status' =>
-        Business::STATUS_SUSPENDED,
-
-    'suspension_reason' =>
-        Business::SUSPENSION_MANUAL,
-
-    'suspended_at' => now(),
-]);
+            'status' => Business::STATUS_SUSPENDED,
+            'suspension_reason' => Business::SUSPENSION_MANUAL,
+            'suspended_at' => now(),
+            'manual_access_override' => false,
+        ]);
 
         return redirect()
             ->route('superadmin.businesses.show', $business)
-            ->with('success', 'Negocio suspendido correctamente.');
+            ->with(
+                'success',
+                'Negocio suspendido correctamente.'
+            );
     }
 
     public function activate(Business $business): RedirectResponse
     {
-        if ($business->status === Business::STATUS_ACTIVE) {
-            return back()->with('info', 'El negocio ya se encuentra activo.');
+        $subscription = $business
+            ->currentSubscription()
+            ->first();
+
+        $requiresManualOverride = false;
+
+        if (
+            $subscription !== null
+            && $subscription->auto_suspend
+            && $subscription->status !==
+                Subscription::STATUS_CANCELLED
+        ) {
+            $graceEnd =
+                $subscription->grace_ends_at
+                ?? $subscription->current_period_ends_at;
+
+            $requiresManualOverride =
+                now()->greaterThan($graceEnd);
+        }
+
+        if (
+            $business->isActive()
+            && ! $business->isSuspended()
+            && (
+                ! $requiresManualOverride
+                || $business->manual_access_override
+            )
+        ) {
+            return back()->with(
+                'info',
+                'El negocio ya se encuentra habilitado.'
+            );
         }
 
         $business->update([
-    'status' =>
-        Business::STATUS_ACTIVE,
+            'status' => $requiresManualOverride
+                ? Business::STATUS_OVERDUE
+                : Business::STATUS_ACTIVE,
+            'suspension_reason' => null,
+            'suspended_at' => null,
+            'closed_at' => null,
+            'manual_access_override' => $requiresManualOverride,
+        ]);
 
-    'suspension_reason' => null,
-    'suspended_at' => null,
-    'closed_at' => null,
-]);
+        $message = $requiresManualOverride
+            ? 'Negocio reactivado manualmente. El plan continúa vencido, pero el acceso permanecerá habilitado hasta que lo suspendas nuevamente o renueves la suscripción.'
+            : 'Negocio activado correctamente.';
 
         return redirect()
             ->route('superadmin.businesses.show', $business)
-            ->with('success', 'Negocio activado correctamente.');
+            ->with('success', $message);
     }
     private function createSubscription(
         Business $business,
@@ -597,6 +638,10 @@ public function index(Request $request): View
     $subscription = $business
         ->currentSubscription()
         ->firstOrFail();
+
+    $business->update([
+        'manual_access_override' => false,
+    ]);
 
     $subscription->update([
         'plan_id' =>

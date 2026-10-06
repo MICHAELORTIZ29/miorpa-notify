@@ -309,7 +309,9 @@
                 type="submit"
                 onclick="return confirm('¿Deseas activar este negocio?')"
             >
-                Activar
+                {{ $business->suspension_reason === \App\Models\Business::SUSPENSION_NONPAYMENT
+                    ? 'Reactivar acceso'
+                    : 'Activar' }}
             </button>
         </form>
     @else
@@ -508,6 +510,16 @@
             </div>
 
             <div class="subscription-stat">
+                <small>Acceso manual</small>
+
+                <strong>
+                    {{ $business->manual_access_override
+                        ? 'Habilitado'
+                        : 'No requerido' }}
+                </strong>
+            </div>
+
+            <div class="subscription-stat">
                 <small>Fecha de inicio</small>
 
                 <strong>
@@ -589,7 +601,12 @@
             </div>
         </div>
 
-        @if ($subscription->warning())
+        @if ($business->manual_access_override)
+            <div class="subscription-warning">
+                El plan está vencido, pero el acceso fue habilitado
+                manualmente por el superadministrador.
+            </div>
+        @elseif ($subscription->warning())
             <div class="subscription-warning">
                 {{ $subscription->warning()['message'] }}
             </div>
