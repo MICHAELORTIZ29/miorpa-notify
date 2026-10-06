@@ -194,6 +194,91 @@
     border-radius: 11px;
 }
 
+.subscription-badges {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.access-status {
+    display: inline-flex;
+    padding: 7px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.access-status-active {
+    color: #08783e;
+    background: #e9f9ef;
+}
+
+.access-status-manual {
+    color: #175cd3;
+    background: #eff8ff;
+}
+
+.access-status-suspended,
+.access-status-closed {
+    color: #b42318;
+    background: #feeceb;
+}
+
+.renewal-panel {
+    margin-top: 24px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.renewal-panel h3 {
+    margin: 0 0 6px;
+}
+
+.renewal-panel p {
+    margin: 0 0 16px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.renewal-form {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.renewal-field {
+    display: grid;
+    gap: 6px;
+    min-width: 230px;
+}
+
+.renewal-field label {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.renewal-field input {
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    font: inherit;
+}
+
+.renewal-help {
+    display: block;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
 @media (max-width: 900px) {
     .subscription-summary {
         grid-template-columns: 1fr 1fr;
@@ -372,6 +457,12 @@
                                 En prueba
                                 @break
 
+                            @case('overdue')
+                                {{ $business->manual_access_override
+                                    ? 'Vencido · acceso habilitado'
+                                    : 'Pago vencido' }}
+                                @break
+
                             @case('suspended')
                                 Suspendido
                                 @break
@@ -417,6 +508,65 @@
         <article class="panel detail-card subscription-card">
     @php
         $subscription = $business->currentSubscription;
+        $businessTimezone = $business->timezone ?: 'America/Lima';
+        $nowLocal = now($businessTimezone);
+        $periodEndLocal = $subscription?->current_period_ends_at
+            ?->copy()
+            ->timezone($businessTimezone);
+        $graceEndLocal = $subscription?->grace_ends_at
+            ?->copy()
+            ->timezone($businessTimezone)
+            ?? $periodEndLocal;
+
+        $financialStatusLabel = null;
+        $financialStatusClass = 'active';
+        $accessStatusLabel = null;
+        $accessStatusClass = 'active';
+        $renewalDefaultDate = old('renewal_starts_at');
+
+        if ($subscription) {
+            if ($subscription->status === 'cancelled') {
+                $financialStatusLabel = 'Cancelada';
+                $financialStatusClass = 'suspended';
+            } elseif ($graceEndLocal && $nowLocal->greaterThan($graceEndLocal)) {
+                $financialStatusLabel = 'Plan vencido';
+                $financialStatusClass = 'overdue';
+            } elseif ($periodEndLocal && $nowLocal->greaterThan($periodEndLocal)) {
+                $financialStatusLabel = 'Periodo de gracia';
+                $financialStatusClass = 'overdue';
+            } elseif ($subscription->status === 'trial') {
+                $financialStatusLabel = 'En prueba';
+                $financialStatusClass = 'trial';
+            } else {
+                $financialStatusLabel = 'Vigente';
+                $financialStatusClass = 'active';
+            }
+
+            if (! $renewalDefaultDate) {
+                $todayLocal = $nowLocal->copy()->startOfDay();
+                $dueLocal = $periodEndLocal?->copy()->startOfDay();
+
+                $renewalDefaultDate = (
+                    $dueLocal && $dueLocal->greaterThanOrEqualTo($todayLocal)
+                        ? $dueLocal
+                        : $todayLocal
+                )->format('Y-m-d');
+            }
+        }
+
+        if ($business->status === 'closed') {
+            $accessStatusLabel = 'Acceso cerrado';
+            $accessStatusClass = 'closed';
+        } elseif ($business->status === 'suspended') {
+            $accessStatusLabel = 'Acceso suspendido';
+            $accessStatusClass = 'suspended';
+        } elseif ($business->manual_access_override) {
+            $accessStatusLabel = 'Acceso habilitado manualmente';
+            $accessStatusClass = 'manual';
+        } else {
+            $accessStatusLabel = 'Acceso habilitado';
+            $accessStatusClass = 'active';
+        }
     @endphp
 
     <div class="subscription-header">
@@ -429,37 +579,19 @@
         </div>
 
         @if ($subscription)
-            <span
-                class="
-                    subscription-status
-                    subscription-status-{{ $subscription->status }}
-                "
-            >
-                @switch($subscription->status)
-                    @case('active')
-                        Activa
-                        @break
+            <div class="subscription-badges">
+                <span
+                    class="subscription-status subscription-status-{{ $financialStatusClass }}"
+                >
+                    {{ $financialStatusLabel }}
+                </span>
 
-                    @case('trial')
-                        En prueba
-                        @break
-
-                    @case('overdue')
-                        Pago vencido
-                        @break
-
-                    @case('suspended')
-                        Suspendida
-                        @break
-
-                    @case('cancelled')
-                        Cancelada
-                        @break
-
-                    @default
-                        {{ ucfirst($subscription->status) }}
-                @endswitch
-            </span>
+                <span
+                    class="access-status access-status-{{ $accessStatusClass }}"
+                >
+                    {{ $accessStatusLabel }}
+                </span>
+            </div>
         @endif
     </div>
 
@@ -514,8 +646,12 @@
 
                 <strong>
                     {{ $business->manual_access_override
-                        ? 'Habilitado'
-                        : 'No requerido' }}
+                        ? 'Habilitado manualmente'
+                        : (
+                            $business->status === 'suspended'
+                                ? 'Suspendido'
+                                : 'Normal'
+                        ) }}
                 </strong>
             </div>
 
@@ -524,7 +660,7 @@
 
                 <strong>
                     {{ $subscription->starts_at
-                        ->timezone('America/Lima')
+                        ->timezone($businessTimezone)
                         ->format('d/m/Y') }}
                 </strong>
             </div>
@@ -534,7 +670,7 @@
 
                 <strong>
                     {{ $subscription->current_period_ends_at
-                        ->timezone('America/Lima')
+                        ->timezone($businessTimezone)
                         ->format('d/m/Y') }}
                 </strong>
             </div>
@@ -544,7 +680,7 @@
 
                 <strong>
                     {{ $subscription->grace_ends_at
-                        ?->timezone('America/Lima')
+                        ?->timezone($businessTimezone)
                         ->format('d/m/Y')
                         ?? 'Sin gracia' }}
                 </strong>
@@ -611,6 +747,61 @@
                 {{ $subscription->warning()['message'] }}
             </div>
         @endif
+
+
+        <div class="renewal-panel" id="renovar-suscripcion">
+            <h3>Renovar suscripción</h3>
+
+            <p>
+                Usa esta opción cuando el cliente haya realizado el pago.
+                La renovación activa el negocio, elimina cualquier acceso
+                excepcional y calcula automáticamente el siguiente vencimiento
+                según su ciclo actual.
+            </p>
+
+            <form
+                class="renewal-form"
+                method="POST"
+                action="{{ route('superadmin.businesses.renew', $business) }}"
+                onsubmit="return confirm('¿Confirmas que el cliente pagó y deseas renovar su suscripción?')"
+            >
+                @csrf
+                @method('PATCH')
+
+                <div class="renewal-field">
+                    <label for="renewal_starts_at">
+                        Inicio del nuevo periodo
+                    </label>
+
+                    <input
+                        id="renewal_starts_at"
+                        name="renewal_starts_at"
+                        type="date"
+                        value="{{ $renewalDefaultDate }}"
+                        required
+                    >
+                </div>
+
+                <button
+                    class="button button-success"
+                    type="submit"
+                >
+                    Confirmar renovación
+                </button>
+            </form>
+
+            @error('renewal_starts_at')
+                <div class="field-error" style="margin-top: 10px;">
+                    {{ $message }}
+                </div>
+            @enderror
+
+            <small class="renewal-help">
+                Ciclo actual:
+                {{ $subscription->billing_cycle === 'annual' ? 'anual' : 'mensual' }}.
+                El periodo de gracia configurado se conserva automáticamente.
+            </small>
+        </div>
     @else
         <p>
             Este negocio todavía no tiene una suscripción configurada.

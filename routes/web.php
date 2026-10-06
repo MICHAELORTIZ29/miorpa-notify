@@ -119,6 +119,12 @@ Route::prefix('superadmin')
             'businesses/{business}/activate',
             [BusinessController::class, 'activate']
         )->name('businesses.activate');
+
+
+        Route::patch(
+            'businesses/{business}/renew',
+            [BusinessController::class, 'renew']
+        )->name('businesses.renew');
         Route::delete(
             'businesses/{business}',
             [BusinessController::class, 'destroy']

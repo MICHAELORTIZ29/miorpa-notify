@@ -382,7 +382,32 @@
 
                         <td>
                             <span class="status {{ $statusClass }}">
-                                {{ ucfirst($business->status) }}
+                                @switch($business->status)
+                                    @case('active')
+                                        Activo
+                                        @break
+
+                                    @case('trial')
+                                        En prueba
+                                        @break
+
+                                    @case('overdue')
+                                        {{ $business->manual_access_override
+                                            ? 'Vencido · acceso manual'
+                                            : 'Pago vencido' }}
+                                        @break
+
+                                    @case('suspended')
+                                        Suspendido
+                                        @break
+
+                                    @case('closed')
+                                        Cerrado
+                                        @break
+
+                                    @default
+                                        {{ ucfirst($business->status) }}
+                                @endswitch
                             </span>
                         </td>
 

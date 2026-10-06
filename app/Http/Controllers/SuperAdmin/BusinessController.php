@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Services\SubscriptionStatusService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
@@ -304,8 +305,22 @@ public function index(Request $request): View
     }
 
     public function show(
-        Business $business
+        Business $business,
+        SubscriptionStatusService $subscriptionStatusService
     ): View {
+        $subscription = $business
+            ->currentSubscription()
+            ->with('business')
+            ->first();
+
+        if ($subscription !== null) {
+            $subscriptionStatusService->synchronize(
+                $subscription
+            );
+
+            $business->refresh();
+        }
+
         $business->load([
             'users' => fn($query) => $query
                 ->orderBy('role_code')
@@ -517,14 +532,133 @@ public function index(Request $request): View
             'manual_access_override' => $requiresManualOverride,
         ]);
 
+        /*
+         * La suscripción y el negocio deben mostrar un estado coherente.
+         * Si el plan sigue vencido pero el superadministrador habilitó el
+         * acceso, la suscripción pasa a "overdue" en lugar de quedarse como
+         * "suspended". El sincronizador conservará este comportamiento
+         * mientras manual_access_override permanezca activo.
+         */
+        if (
+            $subscription !== null
+            && $subscription->status !==
+                Subscription::STATUS_CANCELLED
+        ) {
+            $subscription->update([
+                'status' => $requiresManualOverride
+                    ? Subscription::STATUS_OVERDUE
+                    : (
+                        $subscription->status ===
+                            Subscription::STATUS_TRIAL
+                            ? Subscription::STATUS_TRIAL
+                            : Subscription::STATUS_ACTIVE
+                    ),
+                'suspended_at' => null,
+            ]);
+        }
+
         $message = $requiresManualOverride
-            ? 'Negocio reactivado manualmente. El plan continúa vencido, pero el acceso permanecerá habilitado hasta que lo suspendas nuevamente o renueves la suscripción.'
+            ? 'Acceso habilitado manualmente. El plan continúa vencido hasta que registres una renovación.'
             : 'Negocio activado correctamente.';
 
         return redirect()
             ->route('superadmin.businesses.show', $business)
             ->with('success', $message);
     }
+
+    public function renew(
+        Request $request,
+        Business $business
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'renewal_starts_at' => [
+                'required',
+                'date_format:Y-m-d',
+            ],
+        ], [
+            'renewal_starts_at.required' =>
+                'Selecciona la fecha de inicio del nuevo periodo.',
+            'renewal_starts_at.date_format' =>
+                'La fecha de renovación no es válida.',
+        ]);
+
+        $subscription = $business
+            ->currentSubscription()
+            ->first();
+
+        if ($subscription === null) {
+            return back()->withErrors([
+                'renewal_starts_at' =>
+                    'Este negocio no tiene una suscripción para renovar.',
+            ]);
+        }
+
+        $timezone = $business->timezone
+            ?: 'America/Lima';
+
+        $startsAtLocal = CarbonImmutable::parse(
+            $validated['renewal_starts_at'],
+            $timezone
+        )->startOfDay();
+
+        $nextPaymentLocal =
+            $subscription->billing_cycle ===
+                Subscription::CYCLE_ANNUAL
+                ? $startsAtLocal->addYearNoOverflow()->endOfDay()
+                : $startsAtLocal->addMonthNoOverflow()->endOfDay();
+
+        $graceDays = max(
+            0,
+            (int) data_get(
+                $subscription->terms_snapshot_json,
+                'grace_days',
+                0
+            )
+        );
+
+        $graceEndsLocal =
+            $nextPaymentLocal->addDays($graceDays);
+
+        DB::transaction(function () use (
+            $business,
+            $subscription,
+            $startsAtLocal,
+            $nextPaymentLocal,
+            $graceEndsLocal
+        ): void {
+            $subscription->update([
+                'status' => Subscription::STATUS_ACTIVE,
+                'starts_at' => $startsAtLocal->utc(),
+                'current_period_ends_at' =>
+                    $nextPaymentLocal->utc(),
+                'grace_ends_at' =>
+                    $graceEndsLocal->utc(),
+                'suspended_at' => null,
+                'ended_at' => null,
+            ]);
+
+            $business->update([
+                'status' => Business::STATUS_ACTIVE,
+                'suspension_reason' => null,
+                'suspended_at' => null,
+                'closed_at' => null,
+                'manual_access_override' => false,
+            ]);
+        });
+
+        return redirect()
+            ->route(
+                'superadmin.businesses.show',
+                $business
+            )
+            ->with(
+                'success',
+                'Suscripción renovada correctamente. Próxima fecha de pago: '
+                . $nextPaymentLocal->format('d/m/Y')
+                . '.'
+            );
+    }
+
     private function createSubscription(
         Business $business,
         array $validated

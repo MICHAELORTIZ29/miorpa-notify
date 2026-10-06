@@ -68,11 +68,21 @@ class SubscriptionStatusService
             $automaticSuspensionReason = null;
         }
 
+        $requiresAutomaticSuspension =
+            $subscriptionStatus ===
+                Subscription::STATUS_SUSPENDED;
+
         /*
-         * Si el superadministrador reactivó manualmente un negocio cuyo
-         * periodo de gracia ya terminó, mantenemos el estado financiero de
-         * la suscripción como suspendido, pero permitimos que el negocio siga
-         * operando. Así el cron no vuelve a bloquearlo en la siguiente petición.
+         * Si el superadministrador habilitó manualmente el acceso de un
+         * cliente cuyo periodo de gracia ya terminó, el cliente sigue
+         * financieramente vencido, pero ya no debe figurar como suspendido.
+         *
+         * Esto mantiene coherentes los dos conceptos:
+         * - Suscripción: vencida (overdue).
+         * - Acceso: habilitado manualmente.
+         *
+         * Además evita que el sincronizador vuelva a suspender el negocio
+         * en la siguiente petición mientras exista el permiso excepcional.
          */
         $manualAccessOverride =
             (bool) $business->manual_access_override;
@@ -82,6 +92,9 @@ class SubscriptionStatusService
             $subscriptionStatus ===
                 Subscription::STATUS_SUSPENDED
         ) {
+            $subscriptionStatus =
+                Subscription::STATUS_OVERDUE;
+
             $automaticBusinessStatus =
                 Business::STATUS_OVERDUE;
 
@@ -108,7 +121,8 @@ class SubscriptionStatusService
                 $automaticBusinessStatus,
                 $automaticSuspensionReason,
                 $isManuallySuspended,
-                $manualAccessOverride
+                $manualAccessOverride,
+                $requiresAutomaticSuspension
             ): void {
                 $subscriptionChanges = [];
 
@@ -186,8 +200,7 @@ class SubscriptionStatusService
                  */
                 if (
                     $manualAccessOverride &&
-                    $subscriptionStatus !==
-                        Subscription::STATUS_SUSPENDED
+                    ! $requiresAutomaticSuspension
                 ) {
                     $businessChanges['manual_access_override'] = false;
                 }
