@@ -14,8 +14,7 @@ class AuthenticateDevice
 {
     public function __construct(
         private readonly SubscriptionStatusService $service
-    ) {
-    }
+    ) {}
 
     public function handle(
         Request $request,
@@ -26,11 +25,9 @@ class AuthenticateDevice
 
         if (! $plainToken) {
             return response()->json([
-                'message' =>
-                    'Token de dispositivo requerido.',
+                'message' => 'Token de dispositivo requerido.',
 
-                'code' =>
-                    'DEVICE_TOKEN_REQUIRED',
+                'code' => 'DEVICE_TOKEN_REQUIRED',
             ], 401);
         }
 
@@ -47,11 +44,9 @@ class AuthenticateDevice
 
         if (! $device) {
             return response()->json([
-                'message' =>
-                    'Token de dispositivo no válido.',
+                'message' => 'Token de dispositivo no válido.',
 
-                'code' =>
-                    'DEVICE_TOKEN_INVALID',
+                'code' => 'DEVICE_TOKEN_INVALID',
             ], 401);
         }
 
@@ -60,11 +55,9 @@ class AuthenticateDevice
             Device::STATUS_ACTIVE
         ) {
             return response()->json([
-                'message' =>
-                    'El dispositivo no está autorizado.',
+                'message' => 'El dispositivo no está autorizado.',
 
-                'code' =>
-                    $device->status ===
+                'code' => $device->status ===
                     Device::STATUS_REVOKED
                         ? 'DEVICE_REVOKED'
                         : 'DEVICE_DISABLED',
@@ -105,6 +98,9 @@ class AuthenticateDevice
                 true
             );
 
+        $request->attributes->set('payments_allowed', $businessIsOperational);
+        $request->attributes->set('payment_block_reason', $businessIsOperational ? null :
+            ($subscription?->warning()['message'] ?? 'El negocio no tiene acceso operativo para recibir pagos.'));
         if (! $businessIsOperational) {
             /*
              * Permitimos heartbeat y consulta de estado
@@ -124,16 +120,14 @@ class AuthenticateDevice
                 $subscription?->warning();
 
             return response()->json([
-                'message' =>
-                    $warning['message']
+                'message' => $warning['message']
                     ?? (
                         $subscription === null
                             ? 'El negocio no tiene una suscripción activa.'
                             : 'El negocio no se encuentra operativo.'
                     ),
 
-                'code' =>
-                    $warning['code']
+                'code' => $warning['code']
                     ?? (
                         $subscription === null
                             ? 'SUBSCRIPTION_NOT_FOUND'

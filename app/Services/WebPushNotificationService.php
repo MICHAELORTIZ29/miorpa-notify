@@ -16,7 +16,9 @@ class WebPushNotificationService
      * información detallada de cada intento.
      */
     public function sendPaymentNotification(
-        Payment $payment
+        Payment $payment,
+        array $excludedSubscriptionIds = [],
+        ?callable $acknowledged = null
     ): array {
         $subject = trim(
             (string) config(
@@ -60,21 +62,21 @@ class WebPushNotificationService
                 'TTL' => 300,
                 'urgency' => 'high',
                 'topic' => null,
-                'batchSize' => 1000,
-            ]
+                'batchSize' => 20,
+            ],
+            timeout: 8
         );
 
         $payment->loadMissing('provider');
 
         $payload = json_encode(
             [
-                'title' =>
-                    'Nuevo ' .
+                'title' => 'Nuevo '.
                     (
                         $payment->provider?->name
                         ?? 'pago'
-                    ) .
-                    ': S/ ' .
+                    ).
+                    ': S/ '.
                     number_format(
                         (float) $payment->amount,
                         2,
@@ -82,57 +84,46 @@ class WebPushNotificationService
                         ''
                     ),
 
-                'body' =>
-                    (
-                        $payment->payer_name
-                        ?: 'Cliente no identificado'
-                    ) .
+                'body' => (
+                    $payment->payer_name
+                    ?: 'Cliente no identificado'
+                ).
                     ' realizó un pago.',
 
-                'icon' =>
-                    '/logo-icon-192.png',
+                'icon' => '/logo-icon-192.png',
 
-                'badge' =>
-                    '/logo-icon-192.png',
+                'badge' => '/logo-icon-192.png',
 
-                'tag' =>
-                    'miorpa-payment-' .
+                'tag' => 'miorpa-payment-'.
                     $payment->public_id,
 
-                'url' =>
-                    route(
-                        'business.payments.show',
-                        $payment
-                    ),
+                'url' => route(
+                    'business.payments.show',
+                    $payment
+                ),
 
-                'payment_id' =>
-                    $payment->public_id,
+                'payment_id' => $payment->public_id,
 
                 'payment' => [
-                    'public_id' =>
-                        $payment->public_id,
+                'public_id' => $payment->public_id,
 
-                    'provider' =>
-                        $payment->provider?->name
-                        ?? 'Pago',
+                'provider' => $payment->provider?->name
+                    ?? 'Pago',
 
-                    'amount' =>
-                        number_format(
-                            (float) $payment->amount,
-                            2,
-                            '.',
-                            ''
-                        ),
+                'amount' => number_format(
+                    (float) $payment->amount,
+                    2,
+                    '.',
+                    ''
+                ),
 
-                    'payer_name' =>
-                        $payment->payer_name
-                        ?: 'Cliente no identificado',
+                'payer_name' => $payment->payer_name
+                    ?: 'Cliente no identificado',
 
-                    'detail_url' =>
-                        route(
-                            'business.payments.show',
-                            $payment
-                        ),
+                'detail_url' => route(
+                    'business.payments.show',
+                    $payment
+                ),
                 ],
             ],
             JSON_THROW_ON_ERROR
@@ -152,26 +143,26 @@ class WebPushNotificationService
                 ->get();
 
         $results = [];
+        $subscriptionIdsByEndpoint = [];
 
         foreach (
-            $storedSubscriptions
-            as $storedSubscription
+            $storedSubscriptions as $storedSubscription
         ) {
+            if (in_array($storedSubscription->id, $excludedSubscriptionIds, true)) {
+                continue;
+            }
+            $subscriptionIdsByEndpoint[$storedSubscription->endpoint] = $storedSubscription->id;
             try {
                 $subscription =
                     Subscription::create([
-                        'endpoint' =>
-                            $storedSubscription->endpoint,
+                        'endpoint' => $storedSubscription->endpoint,
 
-                        'publicKey' =>
-                            $storedSubscription->public_key,
+                        'publicKey' => $storedSubscription->public_key,
 
-                        'authToken' =>
-                            $storedSubscription->auth_token,
+                        'authToken' => $storedSubscription->auth_token,
 
-                        'contentEncoding' =>
-                            $storedSubscription
-                                ->content_encoding
+                        'contentEncoding' => $storedSubscription
+                            ->content_encoding
                                 ?: 'aes128gcm',
                     ]);
 
@@ -185,8 +176,7 @@ class WebPushNotificationService
                 );
             } catch (Throwable $exception) {
                 $results[] = [
-                    'subscription_id' =>
-                        $storedSubscription->id,
+                    'subscription_id' => $storedSubscription->id,
 
                     'success' => false,
 
@@ -194,21 +184,17 @@ class WebPushNotificationService
 
                     'status_code' => null,
 
-                    'reason' =>
-                        $exception->getMessage(),
+                    'reason' => $exception->getMessage(),
                 ];
 
                 Log::error(
                     'No se pudo preparar Web Push.',
                     [
-                        'payment_id' =>
-                            $payment->public_id,
+                        'payment_id' => $payment->public_id,
 
-                        'subscription_id' =>
-                            $storedSubscription->id,
+                        'subscription_id' => $storedSubscription->id,
 
-                        'error' =>
-                            $exception->getMessage(),
+                        'error' => $exception->getMessage(),
                     ]
                 );
             }
@@ -225,38 +211,35 @@ class WebPushNotificationService
                     ?->getStatusCode();
 
             $result = [
-                'endpoint' =>
-                    mb_substr(
-                        $endpoint,
-                        0,
-                        100
-                    ),
+                'subscription_id' => $subscriptionIdsByEndpoint[$endpoint] ?? null,
+                'endpoint' => mb_substr(
+                    $endpoint,
+                    0,
+                    100
+                ),
 
-                'success' =>
-                    $report->isSuccess(),
+                'success' => $report->isSuccess(),
 
-                'expired' =>
-                    $report
-                        ->isSubscriptionExpired(),
+                'expired' => $report
+                    ->isSubscriptionExpired(),
 
-                'status_code' =>
-                    $statusCode,
+                'status_code' => $statusCode,
 
-                'reason' =>
-                    $report->getReason(),
+                'reason' => $report->getReason(),
             ];
 
             $results[] = $result;
+            if (($report->isSuccess() || $report->isSubscriptionExpired()) && $acknowledged !== null && $result['subscription_id'] !== null) {
+                $acknowledged($result['subscription_id']);
+            }
 
             if ($report->isSuccess()) {
                 Log::info(
                     'Web Push enviado correctamente.',
                     [
-                        'payment_id' =>
-                            $payment->public_id,
+                        'payment_id' => $payment->public_id,
 
-                        'status_code' =>
-                            $statusCode,
+                        'status_code' => $statusCode,
                     ]
                 );
 
@@ -266,21 +249,16 @@ class WebPushNotificationService
             Log::error(
                 'Web Push rechazado.',
                 [
-                    'payment_id' =>
-                        $payment->public_id,
+                    'payment_id' => $payment->public_id,
 
-                    'status_code' =>
-                        $statusCode,
+                    'status_code' => $statusCode,
 
-                    'reason' =>
-                        $report->getReason(),
+                    'reason' => $report->getReason(),
 
-                    'expired' =>
-                        $report
-                            ->isSubscriptionExpired(),
+                    'expired' => $report
+                        ->isSubscriptionExpired(),
 
-                    'endpoint' =>
-                        $endpoint,
+                    'endpoint' => $endpoint,
                 ]
             );
 
@@ -297,17 +275,13 @@ class WebPushNotificationService
         }
 
         return [
-            'payment_id' =>
-                $payment->public_id,
+            'payment_id' => $payment->public_id,
 
-            'business_id' =>
-                $payment->business_id,
+            'business_id' => $payment->business_id,
 
-            'subscriptions_found' =>
-                $storedSubscriptions->count(),
+            'subscriptions_found' => $storedSubscriptions->count(),
 
-            'results' =>
-                $results,
+            'results' => $results,
         ];
     }
 }

@@ -575,6 +575,18 @@
 @endpush
 
 @section('business-content')
+<div id="payment-health" class="panel" style="padding:16px 20px;margin-bottom:18px;border-left:4px solid {{ $notificationDelayed || $notificationFailed ? '#b54708' : '#079b98' }}">
+    <strong>Recepción y avisos</strong><br>
+    <div id="emitter-health">
+        @foreach ($paymentHealth['emitters'] as $emitter)
+            <p style="margin:6px 0">{{ $emitter['name'] }}: {{ !$emitter['fresh'] ? 'sin diagnóstico reciente' : ($emitter['listener_connected'] ? 'lector conectado' : 'lector desconectado') }}.
+                Pendientes: {{ $emitter['pending'] ?? 'sin dato' }} · Bloqueados: {{ $emitter['blocked'] ?? 'sin dato' }} {{ !$emitter['fresh'] ? '(último reporte)' : '' }}.
+            </p>
+        @endforeach
+    </div>
+    <span id="push-health">Los pagos de este historial están guardados en el servidor. Avisos pendientes: {{ $notificationPending }} · Avisos que requieren revisión: {{ $notificationFailed }}.</span>
+    <p id="push-delay" style="color:#b54708;margin-bottom:0;{{ $notificationDelayed ? '' : 'display:none' }}">Hay avisos pendientes desde hace más de 3 minutos. Revisa la ejecución del cron y la configuración de notificaciones.</p>
+</div>
 <div class="page-heading payment-page-heading">
     <div>
         <h1>Pagos</h1>
@@ -870,7 +882,7 @@
             <table class="payments-table">
                 <thead>
                     <tr>
-                        <th>Hora</th>
+                        <th>Hora de notificación</th>
                         <th>Cliente</th>
                         <th>Medio</th>
                         <th>Monto</th>
@@ -1637,6 +1649,22 @@ async function toggleAlerts() {
 
             const data = await response.json();
 
+            if (data.health) {
+                const host = document.getElementById('emitter-health');
+                host?.replaceChildren();
+                for (const emitter of data.health.emitters ?? []) {
+                    const row = document.createElement('p');
+                    row.style.margin = '6px 0';
+                    const state = !emitter.fresh ? 'sin diagnóstico reciente' : (emitter.listener_connected ? 'lector conectado' : 'lector desconectado');
+                    row.textContent = `${emitter.name}: ${state}. Pendientes: ${emitter.pending ?? 'sin dato'} · Bloqueados: ${emitter.blocked ?? 'sin dato'}${!emitter.fresh ? ' (último reporte)' : ''}.`;
+                    host?.appendChild(row);
+                }
+                const push = document.getElementById('push-health');
+                if (push) push.textContent = `Los pagos de este historial están guardados en el servidor. Avisos pendientes: ${data.health.notification_pending} · Avisos que requieren revisión: ${data.health.notification_failed}.`;
+                const delay = document.getElementById('push-delay');
+                if (delay) delay.style.display = data.health.notification_delayed ? '' : 'none';
+            }
+
             const newPaymentPublicId =
                 data.latest_payment_public_id ?? null;
 
@@ -1683,10 +1711,9 @@ async function toggleAlerts() {
                 error
             );
 
-            updateIndicator(
-                'offline',
-                'Intentando reconectar'
-            );
+            const health = document.getElementById('emitter-health');
+            if (health) health.textContent = 'Sin conexión con la web. El diagnóstico mostrado puede estar desactualizado.';
+            updateIndicator('offline', 'Intentando reconectar');
         } finally {
             requestInProgress = false;
         }

@@ -397,6 +397,7 @@
 
 <section class="panel devices-card">
     <h2>Dispositivos vinculados</h2>
+    <p>Estado según el último reporte del celular. La autorización del dispositivo no confirma que el lector esté conectado.</p>
 
     <div class="table-scroll">
         <table class="devices-table">
@@ -406,6 +407,7 @@
                     <th>Tipo</th>
                     <th>Plataforma</th>
                     <th>Última conexión</th>
+                    <th>Lectura y sincronización</th>
                     <th>Estado</th>
                     <th>Acciones</th>
                 </tr>
@@ -434,6 +436,35 @@
                                     ->timezone('America/Lima')
                                     ->diffForHumans()
                                 : 'Nunca' }}
+                        </td>
+
+                        <td style="min-width:250px;max-width:380px">
+                            @if ($device->type === 'emitter')
+                                @php
+                                    $diagnostics = $device->diagnostics ?? [];
+                                    $fresh = $device->diagnostics_received_at && $device->diagnostics_received_at->gt(now()->subMinutes(3));
+                                @endphp
+                                <strong style="color:{{ $fresh && ($diagnostics['listener_connected'] ?? false) ? '#087a50' : '#b54708' }}">
+                                    {{ !$fresh ? 'Sin diagnóstico reciente' : (($diagnostics['listener_connected'] ?? false) ? 'Lector conectado' : 'Lector desconectado') }}
+                                </strong><br>
+                                @if ($device->diagnostics_received_at)
+                                    <small>Reporte: {{ $device->diagnostics_received_at->timezone('America/Lima')->format('d/m H:i:s') }}</small><br>
+                                    <small>{{ $diagnostics['pending_payments'] ?? 0 }} pendientes · {{ $diagnostics['blocked_payments'] ?? 0 }} bloqueados {{ !$fresh ? '(último reporte)' : '' }}</small><br>
+                                    @if (($diagnostics['other_session_payments'] ?? 0) > 0)
+                                        <small>Pagos retenidos de otra vinculación: {{ $diagnostics['other_session_payments'] }}</small><br>
+                                    @endif
+                                    @if (!empty($diagnostics['last_detected_at']))
+                                        <small>Última detección: {{ \Carbon\CarbonImmutable::createFromTimestampMs($diagnostics['last_detected_at'])->timezone('America/Lima')->format('d/m H:i:s') }}</small><br>
+                                    @endif
+                                    @if (!empty($diagnostics['capture_error']) || !empty($diagnostics['last_upload_error']))
+                                        <small style="color:#b54708">{{ $diagnostics['capture_error'] ?? $diagnostics['last_upload_error'] }}</small>
+                                    @endif
+                                @else
+                                    <small>Actualiza la APK para recibir el diagnóstico.</small>
+                                @endif
+                            @else
+                                <small>Receptor web</small>
+                            @endif
                         </td>
 
                         <td>
@@ -516,7 +547,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="empty-state">
+                        <td colspan="7" class="empty-state">
                             Todavía no hay dispositivos vinculados.
                         </td>
                     </tr>

@@ -4,17 +4,18 @@ namespace App\Http\Controllers\Business;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Business\PaymentIndexRequest;
+use App\Models\Device;
 use App\Models\Payment;
 use App\Models\PaymentAcknowledgement;
 use App\Models\PaymentProvider;
+use App\Models\PaymentPushOutbox;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-use App\Models\Device;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PaymentController extends Controller
@@ -35,27 +36,25 @@ class PaymentController extends Controller
                 'provider',
                 'emitterDevice',
 
-                'acknowledgements' => fn($query) =>
-                    $query
-                        ->whereNotNull('confirmed_at')
-                        ->oldest('confirmed_at'),
+                'acknowledgements' => fn ($query) => $query
+                    ->whereNotNull('confirmed_at')
+                    ->oldest('confirmed_at'),
 
                 'acknowledgements.user:id,name',
                 'acknowledgements.receiverDevice:id,name',
             ])
             ->withExists([
-                'acknowledgements as confirmed_by_user' => fn($query) =>
-                    $query
-                        ->where('user_id', $user->id)
-                        ->whereNotNull('confirmed_at'),
+                'acknowledgements as confirmed_by_user' => fn ($query) => $query
+                    ->where('user_id', $user->id)
+                    ->whereNotNull('confirmed_at'),
             ])
             ->latest('occurred_at');
 
         $query
             ->when(
                 $filters['search'] ?? null,
-                fn($query, $search) => $query->where(
-                    fn($query) => $query
+                fn ($query, $search) => $query->where(
+                    fn ($query) => $query
                         ->where(
                             'payer_name',
                             'like',
@@ -70,9 +69,9 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['provider'] ?? null,
-                fn($query, $provider) => $query->whereHas(
+                fn ($query, $provider) => $query->whereHas(
                     'provider',
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'code',
                         $provider
                     )
@@ -80,21 +79,21 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['status'] ?? null,
-                fn($query, $status) => $query->where(
+                fn ($query, $status) => $query->where(
                     'status',
                     $status
                 )
             )
             ->when(
                 $filters['amount'] ?? null,
-                fn($query, $amount) => $query->where(
+                fn ($query, $amount) => $query->where(
                     'amount',
                     $amount
                 )
             )
             ->when(
                 $filters['date_from'] ?? null,
-                fn($query, $date) => $query->where(
+                fn ($query, $date) => $query->where(
                     'occurred_at',
                     '>=',
                     CarbonImmutable::parse(
@@ -105,7 +104,7 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['date_to'] ?? null,
-                fn($query, $date) => $query->where(
+                fn ($query, $date) => $query->where(
                     'occurred_at',
                     '<=',
                     CarbonImmutable::parse(
@@ -128,8 +127,7 @@ class PaymentController extends Controller
 
         $hasActiveFilters = collect($filters)
             ->filter(
-                fn($value) =>
-                $value !== null &&
+                fn ($value) => $value !== null &&
                 $value !== ''
             )
             ->isNotEmpty();
@@ -173,9 +171,14 @@ class PaymentController extends Controller
                 'name',
             ]);
 
+        $paymentHealth = $this->paymentHealth($user->business_id);
+        $notificationPending = $paymentHealth['notification_pending'];
+        $notificationFailed = $paymentHealth['notification_failed'];
+        $notificationDelayed = $paymentHealth['notification_delayed'];
+
         $latestPaymentPublicId = Payment::query()
             ->where('business_id', $user->business_id)
-            ->latest('occurred_at')
+            ->latest('received_at')->latest('id')
             ->value('public_id');
 
         return view(
@@ -190,7 +193,8 @@ class PaymentController extends Controller
                 'filteredPaymentTotal',
                 'hasActiveFilters',
                 'latestPaymentPublicId',
-                'canViewPaymentTotals'
+                'canViewPaymentTotals',
+                'notificationPending', 'notificationFailed', 'notificationDelayed', 'paymentHealth'
             )
         );
     }
@@ -204,51 +208,68 @@ class PaymentController extends Controller
         $latestPayment = Payment::query()
             ->with('provider')
             ->where('business_id', $business->id)
-            ->latest('occurred_at')
+            ->latest('received_at')->latest('id')
             ->first();
 
         return response()->json([
-            'latest_payment_public_id' =>
-                $latestPayment?->public_id,
+            'latest_payment_public_id' => $latestPayment?->public_id,
 
-            'latest_payment_at' =>
-                $latestPayment?->occurred_at?->toISOString(),
+            'latest_payment_at' => $latestPayment?->received_at?->toISOString(),
 
             'latest_payment' => $latestPayment
                 ? [
-                    'public_id' =>
-                        $latestPayment->public_id,
+                    'public_id' => $latestPayment->public_id,
 
-                    'amount' =>
-                        number_format(
-                            (float) $latestPayment->amount,
-                            2,
-                            '.',
-                            ''
-                        ),
+                    'amount' => number_format(
+                        (float) $latestPayment->amount,
+                        2,
+                        '.',
+                        ''
+                    ),
 
-                    'provider' =>
-                        $latestPayment->provider?->name
+                    'provider' => $latestPayment->provider?->name
                         ?? 'Pago',
 
-                    'payer_name' =>
-                        $latestPayment->payer_name
+                    'payer_name' => $latestPayment->payer_name
                         ?: 'Cliente no identificado',
 
-                    'status' =>
-                        $latestPayment->status,
+                    'status' => $latestPayment->status,
 
-                    'detail_url' =>
-                        route(
-                            'business.payments.show',
-                            $latestPayment
-                        ),
+                    'detail_url' => route(
+                        'business.payments.show',
+                        $latestPayment
+                    ),
                 ]
                 : null,
 
+            'health' => $this->paymentHealth($business->id),
             'checked_at' => now()->toISOString(),
         ]);
     }
+
+    private function paymentHealth(int $businessId): array
+    {
+        $queue = PaymentPushOutbox::query()->whereHas('payment', fn ($q) => $q->where('business_id', $businessId));
+        $pending = (clone $queue)->whereIn('state', ['pending', 'processing']);
+        $oldest = (clone $pending)->min('created_at');
+
+        return [
+            'notification_pending' => $pending->count(),
+            'notification_failed' => (clone $queue)->where('state', 'failed')->count(),
+            'notification_delayed' => $oldest && CarbonImmutable::parse($oldest)->lt(now()->subMinutes(3)),
+            'emitters' => Device::query()->where('business_id', $businessId)->where('type', Device::TYPE_EMITTER)
+                ->where('status', Device::STATUS_ACTIVE)->get(['name', 'diagnostics', 'diagnostics_received_at'])->map(function ($device) {
+                    $diag = $device->diagnostics ?? [];
+                    $fresh = $device->diagnostics_received_at && $device->diagnostics_received_at->gt(now()->subMinutes(3));
+
+                    return ['name' => $device->name, 'fresh' => (bool) $fresh,
+                        'listener_connected' => $fresh && ($diag['listener_connected'] ?? false),
+                        'pending' => $diag['pending_payments'] ?? null, 'blocked' => $diag['blocked_payments'] ?? null,
+                        'reported_at' => $device->diagnostics_received_at?->timezone('America/Lima')->format('H:i:s')];
+                })->all(),
+        ];
+    }
+
     public function export(
         PaymentIndexRequest $request
     ): StreamedResponse {
@@ -273,20 +294,17 @@ class PaymentController extends Controller
                 'provider:id,name',
                 'emitterDevice:id,name',
 
-                'acknowledgements' => fn($query) =>
-                    $query
-                        ->whereNotNull('confirmed_at')
-                        ->oldest('confirmed_at'),
+                'acknowledgements' => fn ($query) => $query
+                    ->whereNotNull('confirmed_at')
+                    ->oldest('confirmed_at'),
 
                 'acknowledgements.user:id,name',
                 'acknowledgements.receiverDevice:id,name',
             ])
             ->when(
                 $filters['search'] ?? null,
-                fn($query, $search) =>
-                $query->where(
-                    fn($query) =>
-                    $query
+                fn ($query, $search) => $query->where(
+                    fn ($query) => $query
                         ->where(
                             'payer_name',
                             'like',
@@ -301,11 +319,9 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['provider'] ?? null,
-                fn($query, $provider) =>
-                $query->whereHas(
+                fn ($query, $provider) => $query->whereHas(
                     'provider',
-                    fn($query) =>
-                    $query->where(
+                    fn ($query) => $query->where(
                         'code',
                         $provider
                     )
@@ -313,24 +329,21 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['status'] ?? null,
-                fn($query, $status) =>
-                $query->where(
+                fn ($query, $status) => $query->where(
                     'status',
                     $status
                 )
             )
             ->when(
                 $filters['amount'] ?? null,
-                fn($query, $amount) =>
-                $query->where(
+                fn ($query, $amount) => $query->where(
                     'amount',
                     $amount
                 )
             )
             ->when(
                 $filters['date_from'] ?? null,
-                fn($query, $date) =>
-                $query->where(
+                fn ($query, $date) => $query->where(
                     'occurred_at',
                     '>=',
                     CarbonImmutable::parse(
@@ -343,8 +356,7 @@ class PaymentController extends Controller
             )
             ->when(
                 $filters['date_to'] ?? null,
-                fn($query, $date) =>
-                $query->where(
+                fn ($query, $date) => $query->where(
                     'occurred_at',
                     '<=',
                     CarbonImmutable::parse(
@@ -418,16 +430,13 @@ class PaymentController extends Controller
                                     ->first();
 
                             $status = match (
-                            $payment->status
+                                $payment->status
                             ) {
-                                Payment::STATUS_CONFIRMED =>
-                                'Verificado',
+                                Payment::STATUS_CONFIRMED => 'Verificado',
 
-                                Payment::STATUS_IGNORED =>
-                                'Ignorado',
+                                Payment::STATUS_IGNORED => 'Ignorado',
 
-                                default =>
-                                'Recibido',
+                                default => 'Recibido',
                             };
 
                             fputcsv(
@@ -460,11 +469,11 @@ class PaymentController extends Controller
 
                                     $payment
                                         ->provider
-                                            ?->name
+                                        ?->name
                                     ?? 'No identificado',
 
                                     number_format(
-                                        (float) 
+                                        (float)
                                         $payment
                                             ->amount,
                                         2,
@@ -480,7 +489,7 @@ class PaymentController extends Controller
                                         ->safeCsvValue(
                                             $confirmation
                                                 ?->user
-                                                    ?->name
+                                                ?->name
                                             ?? ''
                                         ),
 
@@ -488,13 +497,13 @@ class PaymentController extends Controller
                                         ->safeCsvValue(
                                             $confirmation
                                                 ?->receiverDevice
-                                                    ?->name
+                                                ?->name
                                             ?? ''
                                         ),
 
                                     $confirmation
                                         ?->confirmed_at
-                                            ?->timezone(
+                                        ?->timezone(
                                             $timezone
                                         )
                                         ->format(
@@ -506,7 +515,7 @@ class PaymentController extends Controller
                                         ->safeCsvValue(
                                             $payment
                                                 ->emitterDevice
-                                                    ?->name
+                                                ?->name
                                             ?? ''
                                         ),
 
@@ -527,11 +536,9 @@ class PaymentController extends Controller
             },
             $fileName,
             [
-                'Content-Type' =>
-                    'text/csv; charset=UTF-8',
+                'Content-Type' => 'text/csv; charset=UTF-8',
 
-                'Cache-Control' =>
-                    'no-store, no-cache',
+                'Cache-Control' => 'no-store, no-cache',
             ]
         );
     }
@@ -582,9 +589,8 @@ class PaymentController extends Controller
         $payment->load([
             'provider',
             'emitterDevice',
-            'acknowledgements' => fn($query) =>
-                $query->orderByDesc('confirmed_at')
-                    ->orderByDesc('viewed_at'),
+            'acknowledgements' => fn ($query) => $query->orderByDesc('confirmed_at')
+                ->orderByDesc('viewed_at'),
             'acknowledgements.user',
             'acknowledgements.receiverDevice',
         ]);
@@ -593,6 +599,17 @@ class PaymentController extends Controller
             'business.payments.show',
             compact('payment')
         );
+    }
+
+    public function retryNotification(Request $request, Payment $payment): RedirectResponse
+    {
+        $this->ensurePaymentBelongsToBusiness($payment);
+        abort_unless($request->user()->isAdministrator(), 403);
+        $payment->pushOutbox()->whereIn('state', ['failed', 'no_recipients'])->update([
+            'state' => 'pending', 'attempts' => 0, 'next_attempt_at' => now(), 'last_error' => null,
+        ]);
+
+        return back()->with('success', 'Reintento del aviso programado. El pago ya está guardado.');
     }
 
     public function confirm(
@@ -636,10 +653,9 @@ class PaymentController extends Controller
                 if ($existingConfirmation) {
                     return [
                         'confirmed' => false,
-                        'user_name' =>
-                            $existingConfirmation
-                                ->user
-                                    ?->name
+                        'user_name' => $existingConfirmation
+                            ->user
+                            ?->name
                             ?? 'otro usuario',
                     ];
                 }
@@ -647,11 +663,9 @@ class PaymentController extends Controller
                 $acknowledgement =
                     PaymentAcknowledgement::query()
                         ->firstOrNew([
-                            'payment_id' =>
-                                $lockedPayment->id,
+                            'payment_id' => $lockedPayment->id,
 
-                            'user_id' =>
-                                $request->user()->id,
+                            'user_id' => $request->user()->id,
                         ]);
 
                 $acknowledgement->viewed_at ??= now();
@@ -664,19 +678,17 @@ class PaymentController extends Controller
                 $acknowledgement->save();
 
                 $lockedPayment->update([
-                    'status' =>
-                        Payment::STATUS_CONFIRMED,
+                    'status' => Payment::STATUS_CONFIRMED,
                 ]);
 
                 return [
                     'confirmed' => true,
-                    'user_name' =>
-                        $request->user()->name,
+                    'user_name' => $request->user()->name,
                 ];
             }
         );
 
-        if (!$result['confirmed']) {
+        if (! $result['confirmed']) {
             return redirect()
                 ->route(
                     'business.payments.show',
@@ -707,7 +719,7 @@ class PaymentController extends Controller
         $timeFrom = $filters['time_from'] ?? null;
         $timeTo = $filters['time_to'] ?? null;
 
-        if (!$timeFrom && !$timeTo) {
+        if (! $timeFrom && ! $timeTo) {
             return;
         }
 
@@ -728,7 +740,7 @@ class PaymentController extends Controller
                 [
                     '+00:00',
                     $timezoneOffset,
-                    $timeFrom . ':00',
+                    $timeFrom.':00',
                 ]
             );
         }
@@ -739,7 +751,7 @@ class PaymentController extends Controller
                 [
                     '+00:00',
                     $timezoneOffset,
-                    $timeTo . ':59',
+                    $timeTo.':59',
                 ]
             );
         }
@@ -764,12 +776,11 @@ class PaymentController extends Controller
                 true
             )
         ) {
-            return "'" . $value;
+            return "'".$value;
         }
 
         return $value;
     }
-
 
     private function ensurePaymentBelongsToBusiness(
         Payment $payment
@@ -780,5 +791,4 @@ class PaymentController extends Controller
             404
         );
     }
-
 }

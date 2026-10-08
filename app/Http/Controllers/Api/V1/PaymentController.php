@@ -7,17 +7,16 @@ use App\Http\Requests\Api\V1\StorePaymentRequest;
 use App\Models\Device;
 use App\Models\Payment;
 use App\Models\PaymentProvider;
-use App\Services\WebPushNotificationService;
+use App\Models\PaymentPushOutbox;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
 {
     public function store(
-        StorePaymentRequest $request,
-        WebPushNotificationService $webPushService
+        StorePaymentRequest $request
     ): JsonResponse {
         /** @var Device $device */
         $device = $request->attributes->get('device');
@@ -27,11 +26,9 @@ class PaymentController extends Controller
             $device->platform !== Device::PLATFORM_ANDROID
         ) {
             return response()->json([
-                'message' =>
-                    'Este dispositivo no puede enviar pagos.',
+                'message' => 'Este dispositivo no puede enviar pagos.',
 
-                'code' =>
-                    'DEVICE_NOT_EMITTER',
+                'code' => 'DEVICE_NOT_EMITTER',
             ], 403);
         }
 
@@ -74,133 +71,64 @@ class PaymentController extends Controller
 
         $sourceEventHash = hash(
             'sha256',
-            $provider->code .
-            '|' .
+            $provider->code.
+            '|'.
             $validated['event_id']
         );
 
-        $payment = Payment::query()->firstOrCreate(
-            [
-                'business_id' =>
-                    $device->business_id,
+        $payment = DB::transaction(function () use ($device, $sourceEventHash, $provider, $validated, $occurredAt) {
+            $payment = Payment::query()->firstOrCreate(
+                [
+                    'business_id' => $device->business_id,
 
-                'source_event_hash' =>
-                    $sourceEventHash,
-            ],
-            [
-                'payment_provider_id' =>
-                    $provider->id,
+                    'source_event_hash' => $sourceEventHash,
+                ],
+                [
+                    'payment_provider_id' => $provider->id,
 
-                'emitter_device_id' =>
-                    $device->id,
+                    'emitter_device_id' => $device->id,
 
-                'external_reference' =>
-                    $validated['external_reference']
-                    ?? null,
+                    'external_reference' => $validated['external_reference']
+                        ?? null,
 
-                'payer_name' =>
-                    $validated['payer_name']
-                    ?: null,
+                    'payer_name' => $validated['payer_name']
+                        ?: null,
 
-                'amount' =>
-                    $validated['amount'],
+                    'amount' => $validated['amount'],
 
-                'currency' =>
-                    $validated['currency'],
+                    'currency' => $validated['currency'],
 
-                'status' =>
-                    Payment::STATUS_RECEIVED,
+                    'status' => Payment::STATUS_RECEIVED,
 
-                'parser_version' =>
-                    $validated['parser_version']
-                    ?? null,
+                    'parser_version' => $validated['parser_version']
+                        ?? null,
 
-                'occurred_at' =>
-                    $occurredAt,
+                    'occurred_at' => $occurredAt,
 
-                'received_at' =>
-                    now(),
+                    'received_at' => now(),
 
-                'raw_payload' =>
-                    $validated['raw_payload']
-                    ?? null,
+                    'raw_payload' => $validated['raw_payload']
+                        ?? null,
 
-                'metadata' =>
-                    $validated['metadata']
-                    ?? null,
-            ]
-        );
+                    'metadata' => $validated['metadata']
+                        ?? null,
+                ]
+            );
+
+            if ($payment->wasRecentlyCreated) {
+                PaymentPushOutbox::query()->create(['payment_id' => $payment->id, 'next_attempt_at' => now()]);
+            }
+
+            return $payment;
+        }, 3);
 
         $device->update([
-            'last_seen_at' =>
-                now(),
+            'last_seen_at' => now(),
 
-            'last_ip' =>
-                $request->ip(),
+            'last_ip' => $request->ip(),
 
-            'app_version' =>
-                $device->app_version,
+            'app_version' => $device->app_version,
         ]);
-
-        /*
-         * Variables de diagnóstico temporal.
-         *
-         * Nos permitirán saber si el envío Web Push
-         * fue ejecutado correctamente cuando la APK
-         * registre un pago nuevo.
-         */
-        $webPushResult = null;
-        $webPushError = null;
-
-        /*
-         * Solo enviamos Web Push si el pago realmente
-         * acaba de crearse.
-         *
-         * Si la APK vuelve a mandar el mismo evento,
-         * Laravel lo considera duplicado y no envía
-         * otra notificación.
-         */
-        if ($payment->wasRecentlyCreated) {
-            try {
-                $payment->loadMissing('provider');
-
-                $webPushResult =
-                    $webPushService
-                        ->sendPaymentNotification(
-                            $payment
-                        );
-            } catch (\Throwable $exception) {
-                /*
-                 * Aunque falle Web Push, el pago permanece
-                 * guardado correctamente.
-                 */
-                $webPushError =
-                    $exception->getMessage();
-
-                Log::error(
-                    'No se pudo enviar Web Push del pago.',
-                    [
-                        'payment_id' =>
-                            $payment->public_id,
-
-                        'business_id' =>
-                            $payment->business_id,
-
-                        'exception' =>
-                            get_class($exception),
-
-                        'error' =>
-                            $exception->getMessage(),
-
-                        'file' =>
-                            $exception->getFile(),
-
-                        'line' =>
-                            $exception->getLine(),
-                    ]
-                );
-            }
-        }
 
         $statusCode =
             $payment->wasRecentlyCreated
@@ -208,36 +136,21 @@ class PaymentController extends Controller
                 : 200;
 
         return response()->json([
-            'message' =>
-                $payment->wasRecentlyCreated
+            'message' => $payment->wasRecentlyCreated
                     ? 'Pago recibido correctamente.'
                     : 'El pago ya había sido recibido.',
 
             'data' => [
-                'payment_id' =>
-                    $payment->public_id,
+                'payment_id' => $payment->public_id,
 
-                'duplicate' =>
-                    ! $payment->wasRecentlyCreated,
+                'duplicate' => ! $payment->wasRecentlyCreated,
 
-                'status' =>
-                    $payment->status,
+                'status' => $payment->status,
 
-                'received_at' =>
-                    $payment->received_at
-                        ->toIso8601String(),
+                'received_at' => $payment->received_at
+                    ->toIso8601String(),
 
-                /*
-                 * Diagnóstico temporal del Web Push.
-                 *
-                 * Una vez comprobemos que el envío automático
-                 * funciona, estos dos campos pueden eliminarse.
-                 */
-                'web_push' =>
-                    $webPushResult,
-
-                'web_push_error' =>
-                    $webPushError,
+                'notification_state' => $payment->pushOutbox?->state ?? 'unknown',
             ],
         ], $statusCode);
     }

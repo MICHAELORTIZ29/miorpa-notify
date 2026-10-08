@@ -1,15 +1,15 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Business\DashboardController;
 use App\Http\Controllers\Business\DeviceController;
 use App\Http\Controllers\Business\PaymentController as BusinessPaymentController;
 use App\Http\Controllers\Business\UserController as BusinessUserController;
-use App\Http\Controllers\SuperAdmin\BusinessController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\Receiver\ReceiverLinkController;
-use App\Http\Controllers\Business\DashboardController;
+use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\PushSubscriptionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -18,7 +18,7 @@ use App\Http\Controllers\PushSubscriptionController;
 */
 
 Route::get('/', function () {
-    if (!auth()->check()) {
+    if (! auth()->check()) {
         return redirect()->route('login');
     }
 
@@ -120,7 +120,6 @@ Route::prefix('superadmin')
             [BusinessController::class, 'activate']
         )->name('businesses.activate');
 
-
         Route::patch(
             'businesses/{business}/renew',
             [BusinessController::class, 'renew']
@@ -134,13 +133,13 @@ Route::prefix('superadmin')
             'businesses',
             BusinessController::class
         )->only([
-                    'index',
-                    'create',
-                    'store',
-                    'show',
-                    'edit',
-                    'update',
-                ]);
+            'index',
+            'create',
+            'store',
+            'show',
+            'edit',
+            'update',
+        ]);
     });
 
 /*
@@ -187,11 +186,11 @@ Route::prefix('business')
             'users',
             BusinessUserController::class
         )->only([
-                    'index',
-                    'create',
-                    'edit',
-                    'update',
-                ]);
+            'index',
+            'create',
+            'edit',
+            'update',
+        ]);
         /*
         |--------------------------------------------------------------------------
         | Dispositivos
@@ -270,6 +269,9 @@ Route::prefix('business')
             [BusinessPaymentController::class, 'show']
         )->name('payments.show');
 
+        Route::post('/payments/{payment}/retry-notification', [BusinessPaymentController::class, 'retryNotification'])
+            ->middleware('throttle:10,1')->name('payments.retry-notification');
+
         Route::patch(
             '/payments/{payment}/confirm',
             [BusinessPaymentController::class, 'confirm']
@@ -305,7 +307,6 @@ Route::post(
     ->middleware('auth')
     ->name('logout');
 
-
 Route::middleware([
     'auth',
     'active.user',
@@ -331,7 +332,7 @@ Route::middleware([
         Route::post(
             '/subscriptions',
             [
-                \App\Http\Controllers\PushSubscriptionController::class,
+                PushSubscriptionController::class,
                 'store',
             ]
         )->name('subscriptions.store');
@@ -339,7 +340,7 @@ Route::middleware([
         Route::delete(
             '/subscriptions',
             [
-                \App\Http\Controllers\PushSubscriptionController::class,
+                PushSubscriptionController::class,
                 'destroy',
             ]
         )->name('subscriptions.destroy');

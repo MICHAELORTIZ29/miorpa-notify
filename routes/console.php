@@ -11,3 +11,6 @@ Artisan::command('inspire', function () {
 Schedule::command('subscriptions:sync-status')
     ->hourly()
     ->withoutOverlapping();
+Schedule::command('payments:deliver-notifications --max=100')
+    ->everyMinute()
+    ->withoutOverlapping(5);

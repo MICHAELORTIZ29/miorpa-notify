@@ -60,6 +60,10 @@ class DeviceSessionController extends Controller
             $updates['capabilities'] = $validated['capabilities'];
         }
 
+        if (array_key_exists('diagnostics', $validated)) {
+            $updates['diagnostics'] = $validated['diagnostics'];
+            $updates['diagnostics_received_at'] = now();
+        }
         $device->update($updates);
 
         return response()->json([
@@ -69,6 +73,8 @@ class DeviceSessionController extends Controller
                 'status' => $device->status,
                 'server_time' => now()->toIso8601String(),
                 'next_heartbeat_seconds' => 60,
+                'payments_allowed' => (bool) $request->attributes->get('payments_allowed'),
+                'payment_block_reason' => $request->attributes->get('payment_block_reason'),
             ],
         ]);
     }

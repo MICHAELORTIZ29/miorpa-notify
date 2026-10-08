@@ -36,6 +36,8 @@ class Device extends Model
         'last_ip',
         'user_agent',
         'capabilities',
+        'diagnostics',
+        'diagnostics_received_at',
         'authorized_at',
         'last_seen_at',
         'disabled_at',
@@ -51,6 +53,8 @@ class Device extends Model
     {
         return [
             'capabilities' => 'array',
+            'diagnostics' => 'array',
+            'diagnostics_received_at' => 'datetime',
             'authorized_at' => 'datetime',
             'last_seen_at' => 'datetime',
             'disabled_at' => 'datetime',

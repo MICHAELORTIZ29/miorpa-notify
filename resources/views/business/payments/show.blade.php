@@ -105,7 +105,7 @@
             </div>
 
             <div class="detail-item">
-                <small>Fecha y hora</small>
+                <small>Hora de la notificación en el celular</small>
                 <strong>
                     {{ $payment->occurred_at
                         ->timezone('America/Lima')
@@ -113,6 +113,27 @@
                 </strong>
             </div>
 
+            <div class="detail-item">
+                <small>Recepción confirmada por el servidor</small>
+                <strong>{{ $payment->received_at->timezone('America/Lima')->format('d/m/Y H:i:s') }}</strong>
+                <br><small>Demora aproximada: {{ max(0, (int) $payment->occurred_at->diffInSeconds($payment->received_at, false)) }} segundos</small>
+            </div>
+            <div class="detail-item">
+                <small>Aviso del navegador</small>
+                <strong>{{ match ($payment->pushOutbox?->state) {
+                    'pending' => 'Pendiente de envío', 'processing' => 'En proceso',
+                    'delivered' => 'Aceptado por el servicio de notificaciones',
+                    'no_recipients' => 'Sin navegadores suscritos', 'failed' => 'Requiere revisión',
+                    default => 'Sin diagnóstico (pago anterior)',
+                } }}</strong>
+                @if (auth()->user()->isAdministrator() && in_array($payment->pushOutbox?->state, ['failed', 'no_recipients']))
+                    <form method="POST" action="{{ route('business.payments.retry-notification', $payment) }}" style="margin:10px 0">
+                        @csrf
+                        <button class="button button-secondary" type="submit">Reintentar aviso</button>
+                    </form>
+                @endif
+                <small>El pago está guardado aunque el aviso esté pendiente. La aceptación del aviso no confirma su visualización.</small>
+            </div>
             <div class="detail-item">
                 <small>Medio de pago</small>
                 <strong>{{ $payment->provider->name }}</strong>

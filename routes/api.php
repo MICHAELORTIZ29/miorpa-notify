@@ -2,8 +2,8 @@
 
 use App\Http\Controllers\Api\V1\DeviceSessionController;
 use App\Http\Controllers\Api\V1\PairingController;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\PaymentController;
+use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::post(
@@ -14,20 +14,20 @@ Route::prefix('v1')->group(function () {
         ->name('api.v1.pairings.redeem');
 
     Route::prefix('device')
-        ->middleware(['device.auth', 'throttle:120,1'])
+        ->middleware(['device.auth'])
         ->group(function () {
             Route::get(
                 '/status',
                 [DeviceSessionController::class, 'status']
-            )->name('api.v1.device.status');
+            )->middleware('throttle:device-health')->name('api.v1.device.status');
             Route::post(
                 '/payments',
                 [PaymentController::class, 'store']
-            )->name('api.v1.device.payments.store');
+            )->middleware('throttle:device-payments')->name('api.v1.device.payments.store');
 
             Route::post(
                 '/heartbeat',
                 [DeviceSessionController::class, 'heartbeat']
-            )->name('api.v1.device.heartbeat');
+            )->middleware('throttle:device-health')->name('api.v1.device.heartbeat');
         });
 });

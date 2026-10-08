@@ -73,6 +73,11 @@ class Payment extends Model
         );
     }
 
+    public function pushOutbox(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(PaymentPushOutbox::class);
+    }
+
     public function acknowledgements(): HasMany
     {
         return $this->hasMany(PaymentAcknowledgement::class);
