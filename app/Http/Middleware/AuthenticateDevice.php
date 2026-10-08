@@ -82,7 +82,8 @@ class AuthenticateDevice
         $isStatusRequest =
             $request->routeIs(
                 'api.v1.device.status',
-                'api.v1.device.heartbeat'
+                'api.v1.device.heartbeat',
+                'api.v1.device.notification-captures'
             );
 
         $businessIsOperational =

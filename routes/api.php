@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\DeviceSessionController;
+use App\Http\Controllers\Api\V1\NotificationCaptureController;
 use App\Http\Controllers\Api\V1\PairingController;
 use App\Http\Controllers\Api\V1\PaymentController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,9 @@ Route::prefix('v1')->group(function () {
                 '/payments',
                 [PaymentController::class, 'store']
             )->middleware('throttle:device-payments')->name('api.v1.device.payments.store');
+
+            Route::post('/notification-captures', [NotificationCaptureController::class, 'sync'])
+                ->middleware('throttle:device-review')->name('api.v1.device.notification-captures');
 
             Route::post(
                 '/heartbeat',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\DeviceHeartbeatRequest;
 use App\Models\Device;
+use App\Services\DeviceIncidentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -65,6 +66,7 @@ class DeviceSessionController extends Controller
             $updates['diagnostics_received_at'] = now();
         }
         $device->update($updates);
+        app(DeviceIncidentService::class)->refresh($device);
 
         return response()->json([
             'message' => 'Sincronización actualizada.',

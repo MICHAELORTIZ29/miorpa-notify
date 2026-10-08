@@ -551,6 +551,29 @@
             </div>
         @endif
 
+        @if(auth()->user()->isAdministrator())
+        <div style="margin-bottom:16px"><a href="{{ route('business.reliability.index') }}">Control, incidentes y notificaciones sin identificar</a></div>
+        <div id="reader-alerts" class="alert alert-warning" role="status" aria-live="polite" hidden></div>
+        <script>
+        (() => {
+            const box=document.getElementById('reader-alerts');
+            let busy=false;
+            async function update() {
+                if (busy || document.hidden) return;
+                busy=true;
+                try {
+                    const response=await fetch(@json(route('business.reliability.summary')), {headers:{'Accept':'application/json'},credentials:'same-origin',signal:AbortSignal.timeout(10000)});
+                    if (!response.ok) throw new Error('status');
+                    const data=await response.json();
+                    box.hidden=data.count===0;
+                    box.textContent=data.count ? `${data.count} alertas abiertas. `+data.messages.map(x=>`${x.device}: ${x.message}`).join(' ')+' Revisa Control e incidentes.' : '';
+                } catch (_) { box.hidden=false; box.textContent='No se pudo actualizar el estado de los lectores. Comprueba la conexión y abre Control e incidentes.'; }
+                finally { busy=false; }
+            }
+            update(); setInterval(update,30000); document.addEventListener('visibilitychange',update);
+        })();
+        </script>
+        @endif
         @yield('business-content')
     </main>
 

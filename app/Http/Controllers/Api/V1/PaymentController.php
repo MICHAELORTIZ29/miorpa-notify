@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\StorePaymentRequest;
 use App\Models\Device;
+use App\Models\NotificationCapture;
 use App\Models\Payment;
 use App\Models\PaymentProvider;
 use App\Models\PaymentPushOutbox;
@@ -121,6 +122,10 @@ class PaymentController extends Controller
 
             return $payment;
         }, 3);
+
+        NotificationCapture::where('business_id', $device->business_id)
+            ->where('device_id', $device->id)->where('event_id', $validated['event_id'])
+            ->where('provider_code', $provider->code)->update(['payment_id' => $payment->id]);
 
         $device->update([
             'last_seen_at' => now(),

@@ -4,12 +4,22 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Business\DashboardController;
 use App\Http\Controllers\Business\DeviceController;
 use App\Http\Controllers\Business\PaymentController as BusinessPaymentController;
+use App\Http\Controllers\Business\ReliabilityController;
 use App\Http\Controllers\Business\UserController as BusinessUserController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\Receiver\ReceiverLinkController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('business/control')->name('business.reliability.')->middleware(['auth', 'active.user', 'role:administrator'])->group(function () {
+    $controller = ReliabilityController::class;
+    Route::get('/', [$controller, 'index'])->name('index');
+    Route::get('/summary', [$controller, 'summary'])->name('summary');
+    Route::post('/captures/{capture}/review', [$controller, 'review'])->middleware('throttle:30,1')->name('review');
+    Route::post('/reconcile', [$controller, 'reconcile'])->middleware('throttle:5,1')->name('reconcile');
+    Route::get('/reconciliations/{reconciliation}', [$controller, 'reconciliation'])->name('reconciliation');
+});
 
 /*
 |--------------------------------------------------------------------------
